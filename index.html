@@ -1,0 +1,2598 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🏫 교무업무 지원 도구</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f7f9;
+    --panel: #ffffff;
+    --border: #e3e3e8;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --primary: #ff4b4b;
+    --primary-dark: #d63b3b;
+    --accent: #fffde7;
+    --ok: #16a34a;
+    --warn: #f59e0b;
+    --err: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+    font-size: 14px;
+  }
+  .app { display: flex; min-height: 100vh; }
+  aside.sidebar {
+    width: 280px; flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 20px; overflow-y: auto;
+    position: sticky; top: 0; height: 100vh;
+  }
+  aside.sidebar h2 { margin: 0 0 12px; font-size: 16px; }
+  main.main { flex: 1; padding: 24px 32px; max-width: 1400px; }
+  header h1 { margin: 0 0 4px; font-size: 28px; }
+  header .caption { margin: 0 0 20px; color: var(--muted); }
+
+  nav.tabs {
+    display: flex; gap: 4px; margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  nav.tabs button {
+    background: transparent; border: none; padding: 12px 16px;
+    font-size: 14px; cursor: pointer; color: var(--muted);
+    border-bottom: 2px solid transparent; font-family: inherit;
+  }
+  nav.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+  nav.tabs button:hover { color: var(--text); }
+
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+
+  h3 { margin: 16px 0 8px; font-size: 16px; }
+  h4 { margin: 12px 0 6px; font-size: 14px; }
+
+  label { display: block; font-weight: 500; margin-bottom: 4px; }
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-family: inherit; font-size: 14px; background: white;
+  }
+  textarea { resize: vertical; min-height: 80px; }
+  input:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--primary);
+  }
+
+  button {
+    padding: 8px 14px; border: 1px solid var(--border);
+    background: white; border-radius: 6px; cursor: pointer;
+    font-family: inherit; font-size: 14px;
+    transition: all 0.15s;
+  }
+  button:hover:not(:disabled) { border-color: #999; }
+  button.primary {
+    background: var(--primary); color: white; border-color: var(--primary);
+  }
+  button.primary:hover:not(:disabled) { background: var(--primary-dark); border-color: var(--primary-dark); }
+  button.selected { background: var(--primary); color: white; border-color: var(--primary); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.full { width: 100%; }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  .alert {
+    padding: 10px 14px; border-radius: 6px; margin: 10px 0;
+    border-left: 4px solid;
+  }
+  .alert.info { background: #eff6ff; border-color: #3b82f6; color: #1e40af; }
+  .alert.warn { background: #fef3c7; border-color: var(--warn); color: #92400e; }
+  .alert.err  { background: #fee2e2; border-color: var(--err); color: #991b1b; }
+  .alert.ok   { background: #dcfce7; border-color: var(--ok); color: #166534; }
+  .caption { color: var(--muted); font-size: 13px; margin: 6px 0; }
+
+  .trait-grid label {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; background: #f9f9fb; border-radius: 4px;
+    font-weight: 400; cursor: pointer; font-size: 13px;
+  }
+  .trait-grid label:hover { background: #f1f1f5; }
+  .trait-grid input { width: auto; margin: 0; }
+
+  .student-name-input { margin-bottom: 6px; }
+
+  .radio-group { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+  .radio-group label { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; margin-bottom: 0; }
+  .radio-group input { width: auto; margin: 0; }
+
+  /* 자리배치도 */
+  .seat-desk {
+    background: #e8e8e8; color: #666;
+    text-align: center; padding: 10px;
+    margin-bottom: 10px; border-radius: 5px;
+    font-weight: 500;
+  }
+  .seat-grid { display: grid; gap: 6px; }
+  .seat-cell {
+    padding: 14px 6px; border: 1px solid var(--border);
+    border-radius: 6px; text-align: center;
+    background: var(--accent); cursor: pointer;
+    min-height: 48px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .seat-cell.empty { background: #f5f5f5; color: #ccc; cursor: default; }
+  .seat-cell.fixed { background: var(--primary); color: white; border-color: var(--primary); }
+  .seat-cell.sep   { background: #ffe4e6; }
+  .seat-cell.selected { outline: 3px solid var(--primary); }
+
+  .name-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .name-chips button { font-size: 13px; padding: 6px 10px; }
+
+  /* 테이블 */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; font-size: 13px; }
+  th { background: #f5f5f5; }
+  td input, td select { width: 100%; padding: 4px 6px; font-size: 13px; }
+
+  /* 문제 은행 expander */
+  details {
+    border: 1px solid var(--border); border-radius: 6px;
+    margin: 6px 0; padding: 0 12px;
+  }
+  details > summary { cursor: pointer; padding: 10px 0; font-weight: 500; }
+  details[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .small { font-size: 12px; color: var(--muted); }
+
+  /* 슬라이더 표시 */
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-row input[type="range"] { flex: 1; }
+  .slider-row span { min-width: 30px; text-align: right; font-weight: 500; }
+
+  /* 세특 주제 행 */
+  .topic-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  .topic-row input[type="text"] { flex: 1; }
+  .topic-row input[type="checkbox"] { width: auto; margin: 0; flex: 0 0 auto; }
+  .topic-row button { padding: 4px 8px; flex: 0 0 auto; }
+
+  /* PDF→이미지 미리보기 */
+  .img-preview {
+    display: block; max-width: 100%; margin: 8px 0;
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+
+  /* 합치기 파일 행 */
+  .merge-row {
+    display: grid; grid-template-columns: 30px 1fr 60px 80px 80px;
+    gap: 6px; align-items: center; padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .merge-row .move { display: flex; gap: 4px; }
+  .merge-row .move button { padding: 2px 6px; font-size: 12px; }
+
+  /* 좁은 화면 */
+  @media (max-width: 768px) {
+    .app { flex-direction: column; }
+    aside.sidebar { width: 100%; height: auto; position: relative; }
+    .trait-grid, .grid-3 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h2>👨‍🎓 학생 명단</h2>
+    <div id="student-list"></div>
+    <div class="row">
+      <button id="add-student" class="full">➕ 추가</button>
+      <button id="del-student" class="full">➖ 삭제</button>
+    </div>
+    <hr/>
+    <div class="small">
+      <p><strong>LLM 서버:</strong> <span id="llm-status">확인 중…</span></p>
+      <p>서버 URL: </p>
+      <p>변경하려면: </p>
+    </div>
+  </aside>
+  <main class="main">
+    <header>
+      <h1>🏫 교무업무 지원 도구</h1>
+      <p class="caption">생활기록부 작성 · 자리배치도 · 파일 변환 · 문제 은행 · 공문 분석을 한 곳에서</p>
+    </header>
+
+    <nav class="tabs">
+      <button data-tab="t1" class="active">📝 생활기록부 작성</button>
+      <button data-tab="tseboo">🎓 과목별 세특 작성</button>
+      <button data-tab="t2">🪑 자리배치도</button>
+      <button data-tab="t3">🔄 파일 변환기</button>
+      <button data-tab="t4">📚 문제 은행 / 학습지</button>
+      <button data-tab="t5">📄 공문 요약 / 일정</button>
+    </nav>
+
+    <!-- ─────────── 탭 1: 생활기록부 ─────────── -->
+    <section id="t1" class="tab active">
+      <div id="t1-empty" class="alert info">👈 사이드바에서 학생 이름을 입력해주세요.</div>
+      <div id="t1-body" style="display:none">
+        <h3>학생 선택</h3>
+        <div id="t1-students" class="radio-group"></div>
+
+        <h3>성격/특성 선택</h3>
+        <div id="t1-traits" class="trait-grid grid-3"></div>
+
+        <h4>추가 참고사항 (선택)</h4>
+        <input type="text" id="t1-extra" />
+
+        <div style="margin-top:12px">
+          <button id="t1-generate" class="primary">✍️ 생기부 작성 요청</button>
+          <button id="t1-generate-all">📝 전체 학생 일괄 작성</button>
+        </div>
+
+        <div id="t1-result-wrap" style="display:none">
+          <hr/>
+          <h4>📝 생성 결과 (편집 가능)</h4>
+          <textarea id="t1-result" style="height: 240px"></textarea>
+          <div style="margin-top:8px">
+            <button id="t1-copy">📋 복사</button>
+            <button id="t1-download">📥 다운로드 (.txt)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── 탭 세특: 과목별 세부능력 및 특기사항 ─────────── -->
+    <section id="tseboo" class="tab">
+      <div id="tseboo-empty" class="alert info">👈 사이드바에서 학생 이름을 입력해주세요.</div>
+      <div id="tseboo-body" style="display:none">
+        <label>1.과목 선택</label>
+        <select id="tseboo-subject"></select>
+
+        <label style="margin-top:12px">2.수업 자료 PDF 업로드 (여러 개 가능)</label>
+        <input type="file" id="tseboo-pdfs" accept="application/pdf" multiple />
+        <div id="tseboo-pdf-info" class="caption"></div>
+        <div id="tseboo-pdf-preview"></div>
+        <div style="margin-top:8px">
+          <button id="tseboo-extract">3.📋 PDF에서 주제 추출</button>
+        </div>
+
+        <h3>4.학생 선택</h3>
+        <div id="tseboo-students" class="radio-group"></div>
+
+        <h4>5.이 학생이 성취한 주제 선택 (중복 가능)</h4>
+        <div id="tseboo-topics"></div>
+        <div style="margin-top:6px">
+          <button id="tseboo-topic-add">➕ 주제 추가</button>
+        </div>
+
+        <h4>추가 참고사항 (선택)</h4>
+        <input type="text" id="tseboo-extra" />
+
+        <h4>목표 분량</h4>
+        <div class="slider-row">
+          <input type="range" id="tseboo-target-len" min="200" max="1500" step="50" value="500" />
+          <span id="tseboo-target-len-val">500자</span>
+        </div>
+        <div class="caption" id="tseboo-history-info"></div>
+
+        <div style="margin-top:12px">
+          <button id="tseboo-generate" class="primary">6.✍️ 세특 작성 요청</button>
+          <button id="tseboo-generate-all">📝 전체 학생 일괄 작성</button>
+        </div>
+
+        <div id="tseboo-result-wrap" style="display:none">
+          <hr/>
+          <h4>📝 생성 결과 (편집 가능)</h4>
+          <textarea id="tseboo-result" style="height: 240px"></textarea>
+          <div class="caption" id="tseboo-char-count"></div>
+          <div style="margin-top:8px">
+            <button id="tseboo-shorten">✂️ 목표 분량으로 줄이기</button>
+            <button id="tseboo-copy">📋 복사</button>
+            <button id="tseboo-download">📥 다운로드 (.txt)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── 탭 2: 자리배치도 ─────────── -->
+    <section id="t2" class="tab">
+      <div id="t2-empty" class="alert info">👈 사이드바에서 학생 이름을 입력해주세요.</div>
+      <div id="t2-body" style="display:none">
+        <div class="grid-4">
+          <div>
+            <label>행(줄) 수</label>
+            <input type="number" id="t2-rows" min="1" max="20" value="5" />
+          </div>
+          <div>
+            <label>열(칸) 수</label>
+            <input type="number" id="t2-cols" min="1" max="20" value="6" />
+          </div>
+          <div>
+            <label>📌</label>
+            <button id="t2-fix-toggle" class="full">OFF</button>
+          </div>
+          <div>
+            <label>↔️</label>
+            <button id="t2-sep-toggle" class="full">OFF</button>
+          </div>
+        </div>
+
+        <div id="t2-warn"></div>
+
+        <!-- 고정 모드 UI -->
+        <div id="t2-fix-ui" style="display:none">
+          <h3>📌 자리 고정 설정</h3>
+          <div class="seat-desk">교 탁</div>
+          <div id="t2-fix-grid" class="seat-grid"></div>
+          <h4>학생 선택:</h4>
+          <div id="t2-fix-students" class="name-chips"></div>
+          <div id="t2-fix-info" class="caption"></div>
+          <button id="t2-fix-clear">🗑️ 고정 초기화</button>
+        </div>
+
+        <!-- 멀리 배치 UI -->
+        <div id="t2-sep-ui" style="display:none">
+          <h3>↔️ 멀리 배치하기 설정</h3>
+          <p class="caption">서로 멀리 배치할 학생들을 선택하세요.</p>
+          <div id="t2-sep-students" class="name-chips"></div>
+          <div id="t2-sep-info" class="caption"></div>
+          <button id="t2-sep-clear">🗑️ 멀리 배치 초기화</button>
+        </div>
+
+        <div style="margin-top:12px">
+          <button id="t2-generate" class="primary">🎲 랜덤 배치하기</button>
+        </div>
+
+        <div id="t2-result-wrap" style="display:none">
+          <hr/>
+          <h3>📋 자리배치도</h3>
+          <p class="caption">학생 이름을 클릭하면 자리를 교환할 수 있습니다.</p>
+          <div class="seat-desk">교 탁</div>
+          <div id="t2-grid" class="seat-grid"></div>
+          <div id="t2-swap-info" class="caption"></div>
+          <div class="grid-2" style="margin-top:12px">
+            <button id="t2-dl-png">🖼️ 이미지로 다운로드</button>
+            <button id="t2-dl-pdf">📄 PDF로 다운로드</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── 탭 3: 파일 변환기 ─────────── -->
+    <section id="t3" class="tab">
+      <div class="radio-group" id="t3-mode">
+        <label><input type="radio" name="t3-mode" value="img2pdf" checked /> 이미지 → PDF</label>
+        <label><input type="radio" name="t3-mode" value="pdf2img" /> PDF → 이미지</label>
+        <label><input type="radio" name="t3-mode" value="merge" /> 여러 PDF를 하나로 합치기</label>
+      </div>
+
+      <!-- 이미지 → PDF -->
+      <div id="t3-img2pdf">
+        <label>이미지 파일 업로드</label>
+        <input type="file" id="t3-img-files" accept="image/*" multiple />
+        <div style="margin-top:8px"><button id="t3-img-convert" class="primary">변환하기</button></div>
+        <div id="t3-img-result"></div>
+      </div>
+
+      <!-- PDF → 이미지 -->
+      <div id="t3-pdf2img" style="display:none">
+        <label>PDF 파일 업로드</label>
+        <input type="file" id="t3-pdf-file" accept="application/pdf" />
+        <div style="margin-top:8px"><button id="t3-pdf-convert" class="primary">변환하기</button></div>
+        <div id="t3-pdf-result"></div>
+      </div>
+
+      <!-- PDF 합치기 -->
+      <div id="t3-merge" style="display:none">
+        <label>PDF 파일 업로드 (2개 이상)</label>
+        <input type="file" id="t3-merge-files" accept="application/pdf" multiple />
+        <div id="t3-merge-list"></div>
+        <div style="margin-top:8px"><button id="t3-merge-convert" class="primary" style="display:none">변환하기</button></div>
+        <div id="t3-merge-result"></div>
+      </div>
+    </section>
+
+    <!-- ─────────── 탭 4: 문제 은행 ─────────── -->
+    <section id="t4" class="tab">
+      <label>교재 PDF 업로드</label>
+      <input type="file" id="t4-pdf" accept="application/pdf" />
+      <div id="t4-info"></div>
+
+      <div id="t4-controls" style="display:none">
+        <div id="t4-range-wrap" style="display:none">
+          <label><input type="checkbox" id="t4-use-range" /> 페이지 범위 지정</label>
+          <div id="t4-range-controls" style="display:none">
+            <div class="grid-2">
+              <div>
+                <label>시작 페이지</label>
+                <div class="slider-row">
+                  <input type="range" id="t4-start" min="1" /><span id="t4-start-val"></span>
+                </div>
+              </div>
+              <div>
+                <label>끝 페이지</label>
+                <div class="slider-row">
+                  <input type="range" id="t4-end" min="1" /><span id="t4-end-val"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:12px">
+          <div>
+            <label>객관식 개수</label>
+            <div class="slider-row">
+              <input type="range" id="t4-num-mc" min="0" max="10" value="5" /><span id="t4-num-mc-val">5</span>
+            </div>
+          </div>
+          <div>
+            <label>주관식 개수</label>
+            <div class="slider-row">
+              <input type="range" id="t4-num-sa" min="0" max="10" value="2" /><span id="t4-num-sa-val">2</span>
+            </div>
+          </div>
+        </div>
+
+        <label style="margin-top:12px">난이도</label>
+        <div class="radio-group">
+          <label><input type="radio" name="t4-diff" value="쉬움" /> 쉬움</label>
+          <label><input type="radio" name="t4-diff" value="보통" checked /> 보통</label>
+          <label><input type="radio" name="t4-diff" value="어려움" /> 어려움</label>
+        </div>
+
+        <label>학습지 제목</label>
+        <input type="text" id="t4-title" value="학습지" />
+        <label style="margin-top:8px"><input type="checkbox" id="t4-include-ans" checked /> 정답지 포함</label>
+
+        <div style="margin-top:12px">
+          <button id="t4-generate" class="primary">🤖 문제 생성</button>
+        </div>
+      </div>
+
+      <div id="t4-result"></div>
+    </section>
+
+    <!-- ─────────── 탭 5: 공문 요약 ─────────── -->
+    <section id="t5" class="tab">
+      <label>입력 방식</label>
+      <div class="radio-group" id="t5-mode">
+        <label><input type="radio" name="t5-mode" value="pdf" checked /> PDF 업로드</label>
+        <label><input type="radio" name="t5-mode" value="text" /> 텍스트 붙여넣기</label>
+      </div>
+
+      <div id="t5-pdf-wrap">
+        <label>공문 PDF 업로드</label>
+        <input type="file" id="t5-pdf" accept="application/pdf" />
+        <div id="t5-pdf-info"></div>
+      </div>
+
+      <div id="t5-text-wrap" style="display:none">
+        <label>공문 본문 붙여넣기</label>
+        <textarea id="t5-text" style="height: 200px"></textarea>
+      </div>
+
+      <div style="margin-top:12px">
+        <button id="t5-analyze" class="primary">🔍 분석 시작</button>
+      </div>
+
+      <div id="t5-result"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────
+   설정 & 유틸
+   ───────────────────────────────────────────── */
+const LLM_URL = localStorage.getItem('llm_url') || 'http://100.79.90.126:8000';
+
+// pdf.js worker
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function alertBox(text, type = 'info') {
+  const div = document.createElement('div');
+  div.className = `alert ${type}`;
+  div.textContent = text;
+  return div;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // http(비보안 컨텍스트)에서는 clipboard API가 없으므로 폴백
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+  }
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✅ 복사됨';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }
+}
+
+function todayStr(withTime = false) {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  if (!withTime) return `${y}${m}${dd}`;
+  const h = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${y}${m}${dd}_${h}${mm}${ss}`;
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/* ─────────────────────────────────────────────
+   LLM 호출
+   ───────────────────────────────────────────── */
+async function checkLLMServer() {
+  try {
+    const r = await fetch(`${LLM_URL}/`, { method: 'GET' });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function callLLM({ prompt, system, files, jsonMode = false, temperature = 0.7, provider }) {
+  const fd = new FormData();
+  fd.append('prompt', prompt);
+  if (system != null) fd.append('system', system);
+  fd.append('response_format', jsonMode ? 'json_object' : 'text');
+  fd.append('temperature', String(temperature));
+  if (provider != null) fd.append('provider', provider);
+  if (files) {
+    for (const { name, blob, type } of files) {
+      const b = blob instanceof Blob ? blob : new Blob([blob], { type });
+      fd.append('files', b, name);
+    }
+  }
+  const r = await fetch(`${LLM_URL}/generate`, { method: 'POST', body: fd });
+  if (!r.ok) {
+    let detail = '';
+    try { detail = (await r.json()).detail || ''; } catch {}
+    throw new Error(`HTTP ${r.status} ${detail}`);
+  }
+  return (await r.json()).content;
+}
+
+// 생기부 작성(행동특성·세특·세특 줄이기)은 Gemini로 스트리밍한다. 키 소진 시 서버가 다음 키로 전환.
+async function callLLMStream({ prompt, system, temperature = 0.7, onToken, provider = 'gemini' }) {
+  const fd = new FormData();
+  fd.append('message', prompt);
+  if (system != null) fd.append('system', system);
+  fd.append('temperature', String(temperature));
+  fd.append('provider', provider);
+
+  const r = await fetch(`${LLM_URL}/chat/stream`, { method: 'POST', body: fd });
+  if (!r.ok) {
+    let detail = '';
+    try { detail = (await r.json()).detail || ''; } catch {}
+    throw new Error(`HTTP ${r.status} ${detail}`);
+  }
+
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).replace(/\r$/, '');
+      buf = buf.slice(idx + 1);
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6);
+      if (payload === '[DONE]') return full;
+      let obj;
+      try { obj = JSON.parse(payload); } catch { continue; }
+      if (obj.error) throw new Error(obj.error);
+      if (obj.content != null) {
+        full += obj.content;
+        if (onToken) onToken(obj.content, full);
+      }
+    }
+  }
+  return full;
+}
+
+async function refreshLLMStatus() {
+  const ok = await checkLLMServer();
+  const el = $('#llm-status');
+  if (ok) { el.textContent = '✅ 연결됨'; el.style.color = 'var(--ok)'; }
+  else { el.textContent = '❌ 연결 안 됨'; el.style.color = 'var(--err)'; }
+  return ok;
+}
+
+/* ─────────────────────────────────────────────
+   상태
+   ───────────────────────────────────────────── */
+const state = {
+  students: ['', '', '', '', ''],
+  // 탭1
+  selectedStudent: null,
+  studentTraits: {},   // name -> Set
+  studentExtra: {},    // name -> string
+  studentResult: {},   // name -> string (편집된 결과)
+  generatedHistory: [],
+  // 탭2
+  rows: 5, cols: 6,
+  fixMode: false, sepMode: false,
+  fixedSeats: {},      // "r,c" -> name
+  sepStudents: new Set(),
+  fixSelectedStudent: null,
+  seatGrid: null,
+  selectedSeat: null,
+  // 탭4
+  qbankPdfBytes: null, qbankPages: 0, qbankResult: null,
+  // 탭5
+  docPdfBytes: null, docResult: null,
+  // 탭 세특
+  sebooSubject: '국어',
+  sebooPdfs: [],                  // [{name, text, empty}]
+  sebooSelectedStudent: null,
+  sebooTopics: [],                // [{id, text}] PDF에서 추출/편집한 학습 주제 목록
+  sebooStudentTopics: {},         // name -> Set of topic id (학생이 성취한 주제)
+  sebooStudentExtra: {},          // name -> string
+  sebooStudentResult: {},         // name -> string
+  sebooHistory: {},               // subject -> [생성된 세특 텍스트] (과목별 중복 방지)
+  sebooTargetLen: 500,            // 목표 글자 수
+};
+
+function getNames() {
+  return state.students.map(s => s.trim()).filter(Boolean);
+}
+
+// 기록은 메모리에만 유지하며, 새로고침·창 닫기 시 초기화됨(영속 저장 안 함).
+
+/* ─────────────────────────────────────────────
+   사이드바: 학생 명단
+   ───────────────────────────────────────────── */
+function renderSidebar() {
+  const wrap = $('#student-list');
+  wrap.innerHTML = '';
+  state.students.forEach((name, i) => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = `학생 ${i+1} 이름`;
+    inp.value = name;
+    inp.className = 'student-name-input';
+    inp.addEventListener('input', (e) => {
+      state.students[i] = e.target.value;
+      onStudentsChanged();
+    });
+    wrap.appendChild(inp);
+  });
+}
+$('#add-student').addEventListener('click', () => {
+  state.students.push('');
+  renderSidebar();
+});
+$('#del-student').addEventListener('click', () => {
+  if (state.students.length > 1) {
+    state.students.pop();
+    renderSidebar();
+    onStudentsChanged();
+  }
+});
+
+function onStudentsChanged() {
+  const names = getNames();
+  // 탭1
+  if (state.selectedStudent && !names.includes(state.selectedStudent)) {
+    state.selectedStudent = names[0] || null;
+  }
+  if (!state.selectedStudent && names.length) state.selectedStudent = names[0];
+  // 탭2 fixedSeats / sepStudents 정합성
+  for (const k of Object.keys(state.fixedSeats)) {
+    if (!names.includes(state.fixedSeats[k])) delete state.fixedSeats[k];
+  }
+  state.sepStudents = new Set([...state.sepStudents].filter(n => names.includes(n)));
+  // 탭 세특
+  if (state.sebooSelectedStudent && !names.includes(state.sebooSelectedStudent)) {
+    state.sebooSelectedStudent = names[0] || null;
+  }
+  if (!state.sebooSelectedStudent && names.length) state.sebooSelectedStudent = names[0];
+  renderTab1();
+  renderTab2();
+  renderTabSeboo();
+}
+
+/* ─────────────────────────────────────────────
+   탭 전환
+   ───────────────────────────────────────────── */
+$$('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('nav.tabs button').forEach(b => b.classList.remove('active'));
+    $$('section.tab').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    $('#' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ─────────────────────────────────────────────
+   탭 1: 생활기록부 작성
+   ───────────────────────────────────────────── */
+const TRAITS = [
+  "성실함", "집중력이 높음", "예의 바름", "리더십이 있음", "협동심이 강함",
+  "창의적임", "책임감이 강함", "배려심이 깊음", "적극적임", "꼼꼼함",
+  "밝고 긍정적임", "자기주도적 학습 능력", "발표력이 우수함", "독서를 즐김",
+  "운동을 좋아함", "예술적 감각이 뛰어남", "논리적 사고력이 높음", "봉사 정신이 투철함",
+  "탐구심이 강함", "공감 능력이 뛰어남", "회복 탄력성이 높음", "문제 해결 능력 우수",
+  "경청하는 자세", "정직하고 솔직함", "시간 관리 철저", "비판적 사고력",
+];
+
+// [모범 예시] 아래 두 예시는 문체·구성의 기준점입니다.
+// 선생님이 실제로 만족했던 생기부로 교체하면 품질이 더 올라갑니다. (톤이 다른 예시 2~3개 권장)
+const SYSTEM_PROMPT_REPORT = `당신은 한국 중학교 담임교사입니다. 학생의 생활기록부 '행동특성 및 종합의견'을 작성해주세요.
+
+작성 원칙:
+1. 개조식/명사형 종결어미 사용 (~함, ~돋보임, ~기대됨, ~인상적임)
+2. 반드시 7~8문장으로 작성, 구체적 사례 포함
+3. 부정적 특성도 긍정적으로 변환하여 서술
+4. 학생 이름은 포함하지 않기
+5. 객관적이고 격식 있는 문체 사용
+6. 입력된 '추가 참고사항'은 다른 학생과 내용이 겹치더라도 반드시 본문에 반영할 것 (중복 방지 지침보다 우선)
+
+[모범 예시]
+아래는 문체·구성·종결어미의 기준이 되는 예시입니다. 표현을 그대로 복사하지 말고, 톤과 형식만 참고하여 학생의 실제 특성에 맞게 새로 서술하세요.
+
+(예시 1)
+매 수업마다 학업에 몰입하며 주어진 과제를 기한 내 완수하는 태도를 보임. 모둠 활동 시 동료의 의견을 경청하고 자신의 생각을 조리 있게 전달하며 원만한 관계를 형성함. 어려운 과제에 직면해도 포기하지 않고 자료를 찾아 해결책을 모색하는 모습이 인상적임. 갈등 상황에서는 중재자 역할을 자처하며 학급 분위기를 부드럽게 만드는 데 기여함. 타인의 장점을 발견하여 칭찬을 아끼지 않는 태도로 주변의 긍정적인 변화를 이끌어냄. 매사에 책임감을 지니고 행동하며 공동체의 목표 달성을 위해 헌신하는 모습에서 성숙한 인성을 드러냄.
+(예시 2)
+학급 내 다양한 구성원과 두루 어울리며 긍정적인 분위기를 조성하는 데 탁월한 역량을 발휘함. 모둠 활동 시 소외되는 친구가 없도록 먼저 다가가 대화를 유도하고 협력을 이끌어내는 모습이 돋보임. 자신의 역할을 성실히 수행할 뿐만 아니라 동료의 어려움을 세심하게 살피며 도움을 제공하는 등 배려심 깊은 행동을 일관되게 보여줌. 토의 과정에서 다양한 의견을 수용하고 합리적인 결론을 도출하도록 조율하는 능력이 뛰어남. 학급 행사 시 솔선수범하는 자세로 참여하며 구성원들의 참여도를 높이는 데 크게 일조함. 매사 정직하고 예의 바른 언행으로 신뢰를 얻고 있으며 원만한 대인 관계를 유지함. `;
+
+function renderTab1() {
+  const names = getNames();
+  if (!names.length) {
+    $('#t1-empty').style.display = '';
+    $('#t1-body').style.display = 'none';
+    return;
+  }
+  $('#t1-empty').style.display = 'none';
+  $('#t1-body').style.display = '';
+
+  // 학생 라디오
+  if (!state.selectedStudent || !names.includes(state.selectedStudent)) {
+    state.selectedStudent = names[0];
+  }
+  const sw = $('#t1-students'); sw.innerHTML = '';
+  names.forEach(n => {
+    const lbl = document.createElement('label');
+    const ip = document.createElement('input');
+    ip.type = 'radio'; ip.name = 't1-stu'; ip.value = n;
+    ip.checked = n === state.selectedStudent;
+    ip.addEventListener('change', () => {
+      state.selectedStudent = n;
+      renderTab1();
+    });
+    const done = (state.studentResult[n] || '').trim();
+    lbl.appendChild(ip); lbl.appendChild(document.createTextNode(' ' + n + (done ? ' ✓' : '')));
+    sw.appendChild(lbl);
+  });
+
+  // 특성 체크박스
+  const traits = state.studentTraits[state.selectedStudent] || new Set();
+  const tw = $('#t1-traits'); tw.innerHTML = '';
+  TRAITS.forEach(t => {
+    const lbl = document.createElement('label');
+    const ip = document.createElement('input');
+    ip.type = 'checkbox'; ip.value = t;
+    ip.checked = traits.has(t);
+    ip.addEventListener('change', () => {
+      const cur = state.studentTraits[state.selectedStudent] || new Set();
+      if (ip.checked) cur.add(t); else cur.delete(t);
+      state.studentTraits[state.selectedStudent] = cur;
+    });
+    lbl.appendChild(ip); lbl.appendChild(document.createTextNode(t));
+    tw.appendChild(lbl);
+  });
+
+  // 추가 참고사항
+  const extraIp = $('#t1-extra');
+  extraIp.value = state.studentExtra[state.selectedStudent] || '';
+  extraIp.oninput = () => { state.studentExtra[state.selectedStudent] = extraIp.value; };
+
+  // 결과 표시
+  const rw = $('#t1-result-wrap');
+  const r = state.studentResult[state.selectedStudent];
+  if (r != null) {
+    rw.style.display = '';
+    $('#t1-result').value = r;
+  } else {
+    rw.style.display = 'none';
+  }
+}
+
+$('#t1-result').addEventListener('input', (e) => {
+  if (state.selectedStudent) state.studentResult[state.selectedStudent] = e.target.value;
+});
+
+// 한 학생의 생기부를 생성하여 state에 저장 (단일·일괄 공용)
+async function runReportGeneration(stu, { onToken } = {}) {
+  const traits = state.studentTraits[stu] || new Set();
+  const extra = state.studentExtra[stu] || '';
+  let historySection = '';
+  if (state.generatedHistory.length) {
+    const block = state.generatedHistory.map((t, i) => `[이력 ${i+1}]\n${t}`).join('\n\n');
+    historySection = `
+
+[기존 사용된 표현 이력]
+아래는 같은 학급의 다른 학생들에게 이미 사용한 생활기록부 문구입니다.
+${block}
+
+[중복 방지 지침 - 매우 중요]
+- 위 이력에 등장한 문장 구조, 어휘 조합, 상투적 표현, 마무리 어구를 반복하지 말 것
+- 동일한 특성을 묘사하더라도 새로운 단어 선택과 문장 흐름으로 서술할 것
+- 이력에 자주 등장한 표현(예: '~하는 모습이 인상적임', '~이 돋보임' 등)은 의도적으로 다른 어휘로 대체할 것
+- 학생 개인의 사례·맥락을 살려 차별화된 서술을 할 것
+- 단, 사용자가 입력한 '추가 참고사항'은 위 중복 방지 지침의 예외이며, 이력에 동일 내용이 있더라도 반드시 본문에 반영할 것 (표현은 새롭게 다듬되 내용은 반드시 포함)`;
+  }
+
+  const userPrompt = `학생 이름: ${stu}
+성격/특성: ${[...traits].join(', ')}
+추가 참고사항: ${extra.trim() || '없음'}
+${historySection}
+
+위 정보를 바탕으로 생활기록부 '행동특성 및 종합의견'을 작성해주세요.`;
+
+  const result = await callLLMStream({
+    prompt: userPrompt,
+    system: SYSTEM_PROMPT_REPORT,
+    temperature: 0.7,
+    onToken,
+  });
+  state.studentResult[stu] = result;
+  state.generatedHistory.push(result);
+  return result;
+}
+
+$('#t1-generate').addEventListener('click', async () => {
+  const stu = state.selectedStudent;
+  if (!stu) return;
+  const traits = state.studentTraits[stu] || new Set();
+  if (!traits.size) {
+    alert('성격/특성을 1개 이상 선택해주세요.');
+    return;
+  }
+  if (!(await checkLLMServer())) {
+    alert(`로컬 LLM 서버에 연결할 수 없습니다.\npython server.py 를 먼저 실행해주세요.\nURL: ${LLM_URL}`);
+    return;
+  }
+
+  const btn = $('#t1-generate');
+  btn.disabled = true; btn.textContent = '⏳ 작성 중...';
+
+  const rw = $('#t1-result-wrap');
+  const ta = $('#t1-result');
+  rw.style.display = '';
+  ta.value = '';
+
+  try {
+    await runReportGeneration(stu, {
+      onToken: (_chunk, full) => {
+        if (state.selectedStudent !== stu) return;
+        ta.value = full;
+        ta.scrollTop = ta.scrollHeight;
+      },
+    });
+    renderTab1();
+  } catch (e) {
+    alert('❌ LLM 호출 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✍️ 생기부 작성 요청';
+  }
+});
+
+$('#t1-generate-all').addEventListener('click', async () => {
+  const names = getNames();
+  const targets = names.filter(n => (state.studentTraits[n] || new Set()).size > 0);
+  if (!targets.length) {
+    alert('성격/특성을 선택한 학생이 없습니다. 학생별로 특성을 먼저 선택해주세요.');
+    return;
+  }
+  if (!(await checkLLMServer())) {
+    alert(`로컬 LLM 서버에 연결할 수 없습니다.\npython server.py 를 먼저 실행해주세요.\nURL: ${LLM_URL}`);
+    return;
+  }
+  if (!confirm(`특성이 선택된 ${targets.length}명의 생기부를 순서대로 작성합니다.\n학생 수에 따라 시간이 걸릴 수 있어요. 계속할까요?`)) return;
+
+  const allBtn = $('#t1-generate-all');
+  const oneBtn = $('#t1-generate');
+  allBtn.disabled = true; oneBtn.disabled = true;
+  const rw = $('#t1-result-wrap');
+  const ta = $('#t1-result');
+
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      const stu = targets[i];
+      // 직전에 생성 중이던 학생을 계속 보고 있었으면 현재 학생을 자동으로 따라가고,
+      // 사용자가 다른(완료된) 학생을 보고 있으면 그 화면을 건드리지 않음
+      const following = i === 0 || state.selectedStudent === targets[i - 1];
+      if (following) {
+        state.selectedStudent = stu;
+        renderTab1();
+        rw.style.display = '';
+        ta.value = '';
+      }
+      allBtn.textContent = `⏳ ${i+1}/${targets.length} ${stu} 작성 중...`;
+      await runReportGeneration(stu, {
+        onToken: (_chunk, full) => {
+          if (state.selectedStudent !== stu) return;
+          ta.value = full;
+          ta.scrollTop = ta.scrollHeight;
+        },
+      });
+      renderTab1();
+    }
+    alert(`✅ ${targets.length}명 작성 완료!`);
+  } catch (e) {
+    alert('❌ 일괄 작성 중 오류: ' + e.message);
+  } finally {
+    allBtn.disabled = false; oneBtn.disabled = false;
+    allBtn.textContent = '📝 전체 학생 일괄 작성';
+  }
+});
+
+$('#t1-download').addEventListener('click', () => {
+  const stu = state.selectedStudent;
+  if (!stu) return;
+  const text = state.studentResult[stu] || '';
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${stu}_생활기록부.txt`);
+});
+
+$('#t1-copy').addEventListener('click', () => {
+  const stu = state.selectedStudent;
+  if (!stu) return;
+  copyText(state.studentResult[stu] || '', $('#t1-copy'));
+});
+
+/* ─────────────────────────────────────────────
+   탭 세특: 과목별 세부능력 및 특기사항
+   ───────────────────────────────────────────── */
+const SUBJECTS = [
+  "국어", "수학", "영어", "사회", "역사", "도덕", "과학",
+  "기술·가정", "정보", "체육", "음악", "미술", "한문", "환경", "보건", "진로와 직업",
+];
+
+// PDF 수업 자료에서 학습 주제 목록을 뽑아내는 프롬프트 ('주제 추출' 버튼)
+const TOPIC_EXTRACT_PROMPT = `당신은 수업 자료에서 학습 주제를 뽑아내는 보조자입니다.
+입력된 수업 자료에 실제로 등장하는 핵심 학습 주제·개념·활동만을 8~15개 추출하세요.
+각 주제는 한국어 명사구 한 줄로 간결하게 작성합니다(예: "이차방정식의 근의 공식 유도", "광합성과 세포 호흡의 관계").
+자료에 없는 내용은 만들지 마세요.
+반드시 JSON으로만 응답: {"topics": ["주제1", "주제2", ...]}`;
+
+// [모범 예시] 아래 예시는 문체·구성과 '수업 내용 연계' 방식의 기준점입니다.
+// 선생님이 실제로 만족했던 세특으로 교체하면 품질이 더 올라갑니다.
+const SEBOOK_SYSTEM_PROMPT = `당신은 한국 중학교 교과 담당교사입니다. 학생의 '과목별 세부능력 및 특기사항(세특)'을 작성해주세요.
+
+작성 원칙:
+1. 개조식/명사형 종결어미 사용 (~함, ~보임, ~기대됨, ~인상적임)
+2. 사용자가 지정한 '목표 분량'에 최대한 맞춰 작성 (지정 분량을 넘기지 말 것)
+3. 제공된 '학습 주제' 각각을 본문에 반영하고, 학생이 그 주제를 학습·탐구하여 성취하였음이 드러나도록 서술할 것
+4. '어떤 주제를 다루었고 그 주제를 성취함'이 자연스럽게 드러나도록, 주제별 탐구 과정과 성취를 구체적으로 연결하여 서술
+5. 학생 이름은 포함하지 않기
+6. 객관적이고 격식 있는 문체 사용
+7. 입력된 '추가 참고사항'은 반드시 본문에 반영할 것
+
+[기재 금지 사항 - 생활기록부 규정상 절대 포함 금지]
+- 구체적인 시험 점수, 석차, 등급, 백분율 등 정량적 성적
+- 교외 수상 실적, 모의고사·인증시험(TOEIC, TOEFL, 한자급수 등) 점수
+- 자격증·인증 취득 사실
+- 부모(보호자)·친인척의 사회적·경제적 지위나 직업
+- 특정 대학·기업·기관·학원의 명칭
+- 가정 형편 등 학생 평가와 무관한 개인 정보
+
+[모범 예시]
+아래는 문체·구성과 '주제별 성취' 서술 방식의 기준이 되는 예시입니다. 표현을 그대로 복사하지 말고, 선택된 학습 주제와 학생의 활동에 맞게 새로 서술하세요.
+
+(예시 — 과학 '생태계와 환경')
+먹이 그물과 에너지 흐름의 개념을 정확히 이해하고, 생산자·소비자·분해자의 역할을 구체적 사례를 들어 설명함. 모둠 탐구 활동에서 지역 하천의 수질 자료를 분석하여 생물 다양성 감소의 원인을 논리적으로 도출하는 분석력이 돋보임. 교과 내용을 암기하는 데 그치지 않고 추가 자료를 찾아 생태계 평형이 깨지는 과정을 도식으로 정리하여 발표함. 탐구 결과를 친구들에게 설명하는 과정에서 어려운 개념을 쉬운 예시로 풀어내는 의사소통 능력이 우수함. 환경 보전을 위한 실천 방안을 스스로 제안하는 등 학습을 실생활과 연결하는 태도가 인상적임. 과학적 사고력과 탐구심을 바탕으로 심화 학습에서의 성장이 기대됨.`;
+
+// PDF에서 텍스트만 추출 (pdf.js, 클라이언트). 스캔본 등 텍스트가 없는 PDF는 빈 문자열을 반환.
+async function extractPdfText(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text.trim();
+}
+
+// 글자 수 + NEIS 바이트(UTF-8, 한글 3바이트) 표시
+function sebooCountLabel(text) {
+  const bytes = new Blob([text]).size;
+  return `글자 수: ${text.length}자 · ${bytes}바이트(UTF-8)`;
+}
+
+let _sebooSubjectInitialized = false;
+let _topicId = 0;
+
+function renderTabSeboo() {
+  const names = getNames();
+  if (!names.length) {
+    $('#tseboo-empty').style.display = '';
+    $('#tseboo-body').style.display = 'none';
+    return;
+  }
+  $('#tseboo-empty').style.display = 'none';
+  $('#tseboo-body').style.display = '';
+
+  // 과목 드롭다운 (1회 빌드)
+  const subSel = $('#tseboo-subject');
+  if (!_sebooSubjectInitialized) {
+    SUBJECTS.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s; o.textContent = s;
+      subSel.appendChild(o);
+    });
+    subSel.value = state.sebooSubject;
+    subSel.addEventListener('change', () => { state.sebooSubject = subSel.value; renderTabSeboo(); });
+    _sebooSubjectInitialized = true;
+  }
+
+  // 학생 라디오
+  if (!state.sebooSelectedStudent || !names.includes(state.sebooSelectedStudent)) {
+    state.sebooSelectedStudent = names[0];
+  }
+  const sw = $('#tseboo-students'); sw.innerHTML = '';
+  names.forEach(n => {
+    const lbl = document.createElement('label');
+    const ip = document.createElement('input');
+    ip.type = 'radio'; ip.name = 'tseboo-stu'; ip.value = n;
+    ip.checked = n === state.sebooSelectedStudent;
+    ip.addEventListener('change', () => { state.sebooSelectedStudent = n; renderTabSeboo(); });
+    const done = (state.sebooStudentResult[n] || '').trim();
+    lbl.appendChild(ip); lbl.appendChild(document.createTextNode(' ' + n + (done ? ' ✓' : '')));
+    sw.appendChild(lbl);
+  });
+
+  // PDF 안내
+  const info = $('#tseboo-pdf-info');
+  info.textContent = state.sebooPdfs.length
+    ? `업로드된 PDF: ${state.sebooPdfs.map(p => p.name).join(', ')}`
+    : '수업 자료 PDF를 1개 이상 업로드해주세요.';
+
+  // PDF 추출 텍스트 미리보기/편집 (모델이 실제로 참고하는 내용)
+  const prev = $('#tseboo-pdf-preview');
+  prev.innerHTML = '';
+  state.sebooPdfs.forEach(p => {
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = (p.empty ? '⚠️ ' : '📄 ') + p.name +
+      (p.empty ? ' (텍스트 추출 실패 — 핵심 내용을 직접 입력하세요)' : ` (${p.text.length}자)`);
+    det.appendChild(sum);
+    const ta = document.createElement('textarea');
+    ta.value = p.text;
+    ta.style.height = '140px';
+    ta.placeholder = '스캔본 등으로 추출이 안 된 경우, 수업의 핵심 학습 내용을 직접 입력하세요.';
+    ta.addEventListener('input', () => { p.text = ta.value; p.empty = ta.value.trim().length < 20; });
+    det.appendChild(ta);
+    prev.appendChild(det);
+  });
+
+  const stu = state.sebooSelectedStudent;
+
+  // 학생이 성취한 주제 선택 (체크박스 = 학생별 선택, 텍스트 = 전역 편집)
+  let topicSel = state.sebooStudentTopics[stu];
+  if (!topicSel) { topicSel = new Set(); state.sebooStudentTopics[stu] = topicSel; }
+  const validIds = new Set(state.sebooTopics.map(t => t.id));
+  for (const id of [...topicSel]) if (!validIds.has(id)) topicSel.delete(id);
+
+  const topicWrap = $('#tseboo-topics');
+  topicWrap.innerHTML = '';
+  if (!state.sebooTopics.length) {
+    const cap = document.createElement('div');
+    cap.className = 'caption';
+    cap.textContent = "'📋 PDF에서 주제 추출' 버튼을 누르거나 '➕ 주제 추가'로 직접 입력하세요.";
+    topicWrap.appendChild(cap);
+  } else {
+    state.sebooTopics.forEach(t => {
+      const row = document.createElement('div'); row.className = 'topic-row';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = topicSel.has(t.id);
+      cb.addEventListener('change', () => { if (cb.checked) topicSel.add(t.id); else topicSel.delete(t.id); });
+      const ti = document.createElement('input'); ti.type = 'text'; ti.value = t.text;
+      ti.addEventListener('input', () => { t.text = ti.value; });
+      const del = document.createElement('button'); del.textContent = '✕'; del.title = '주제 삭제';
+      del.addEventListener('click', () => { state.sebooTopics = state.sebooTopics.filter(x => x.id !== t.id); renderTabSeboo(); });
+      row.appendChild(cb); row.appendChild(ti); row.appendChild(del);
+      topicWrap.appendChild(row);
+    });
+  }
+
+  // 추가 참고사항
+  const extraIp = $('#tseboo-extra');
+  extraIp.value = state.sebooStudentExtra[stu] || '';
+  extraIp.oninput = () => { state.sebooStudentExtra[stu] = extraIp.value; };
+
+  // 목표 분량 슬라이더
+  const lenSlider = $('#tseboo-target-len');
+  lenSlider.value = state.sebooTargetLen;
+  $('#tseboo-target-len-val').textContent = `${state.sebooTargetLen}자`;
+  lenSlider.oninput = () => {
+    state.sebooTargetLen = parseInt(lenSlider.value);
+    $('#tseboo-target-len-val').textContent = `${state.sebooTargetLen}자`;
+  };
+
+  // 과목별 중복 방지 이력 정보
+  const hist = state.sebooHistory[state.sebooSubject] || [];
+  const histInfo = $('#tseboo-history-info');
+  histInfo.innerHTML = '';
+  if (hist.length) {
+    histInfo.appendChild(document.createTextNode(
+      `'${state.sebooSubject}' 과목 이전 ${hist.length}건과 표현 중복을 피해 작성합니다. `));
+    const clr = document.createElement('button');
+    clr.textContent = '이력 초기화';
+    clr.style.padding = '2px 8px'; clr.style.fontSize = '12px';
+    clr.onclick = () => { state.sebooHistory[state.sebooSubject] = []; renderTabSeboo(); };
+    histInfo.appendChild(clr);
+  }
+
+  // 결과
+  const rw = $('#tseboo-result-wrap');
+  const r = state.sebooStudentResult[stu];
+  if (r != null) {
+    rw.style.display = '';
+    $('#tseboo-result').value = r;
+    $('#tseboo-char-count').textContent = sebooCountLabel(r);
+  } else {
+    rw.style.display = 'none';
+  }
+}
+
+$('#tseboo-pdfs').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  const info = $('#tseboo-pdf-info');
+  state.sebooPdfs = [];
+  for (const f of files) {
+    info.textContent = `⏳ '${f.name}' 텍스트 추출 중...`;
+    const ab = await readAsArrayBuffer(f);
+    let text = '';
+    try { text = await extractPdfText(ab); } catch { text = ''; }
+    state.sebooPdfs.push({ name: f.name, text, empty: text.trim().length < 20 });
+  }
+  renderTabSeboo();
+});
+
+// LLM 응답에서 주제 배열을 뽑아낸다 (JSON 우선, 실패 시 줄 단위 파싱).
+function parseTopicsRaw(raw) {
+  let topics = [];
+  try {
+    const o = JSON.parse(raw);
+    topics = Array.isArray(o) ? o : (Array.isArray(o.topics) ? o.topics : []);
+  } catch {
+    topics = raw.split('\n').map(s => s.replace(/^[-*\d.\)\s]+/, '').trim()).filter(Boolean);
+  }
+  return topics.map(t => String(t).trim()).filter(Boolean);
+}
+
+$('#tseboo-extract').addEventListener('click', async () => {
+  if (!state.sebooPdfs.length) { alert('먼저 수업 자료 PDF를 업로드해주세요.'); return; }
+  // 내용이 있는 PDF만 대상으로, PDF마다 따로 주제를 뽑아 합친다(추출 주제 수가 PDF 수만큼 늘어남).
+  const pdfs = state.sebooPdfs.filter(p => p.text.trim().length >= 20);
+  if (!pdfs.length) {
+    alert('추출된 텍스트가 거의 없습니다. 미리보기에서 핵심 내용을 직접 입력한 뒤 다시 시도하세요.'); return;
+  }
+  if (!(await checkLLMServer())) { alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return; }
+
+  const btn = $('#tseboo-extract');
+  btn.disabled = true;
+  try {
+    const seen = new Set();           // PDF 간 중복 주제 제거(대소문자 무시 정확 일치)
+    const topics = [];
+    for (let i = 0; i < pdfs.length; i++) {
+      btn.textContent = `⏳ 주제 추출 중... (${i + 1}/${pdfs.length})`;
+      const raw = await callLLM({
+        prompt: pdfs[i].text.trim(),
+        system: TOPIC_EXTRACT_PROMPT,
+        jsonMode: true,
+        temperature: 0.3,
+        provider: 'gemini',
+      });
+      for (const t of parseTopicsRaw(raw)) {
+        const key = t.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); topics.push({ id: ++_topicId, text: t }); }
+      }
+    }
+    state.sebooTopics = topics;
+    if (!state.sebooTopics.length) alert('주제를 추출하지 못했습니다. 미리보기 내용을 확인하거나 직접 추가해주세요.');
+    renderTabSeboo();
+  } catch (e) {
+    alert('❌ 주제 추출 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '📋 PDF에서 주제 추출';
+  }
+});
+
+$('#tseboo-topic-add').addEventListener('click', () => {
+  state.sebooTopics.push({ id: ++_topicId, text: '' });
+  renderTabSeboo();
+});
+
+$('#tseboo-result').addEventListener('input', (e) => {
+  const stu = state.sebooSelectedStudent;
+  if (stu) {
+    state.sebooStudentResult[stu] = e.target.value;
+    $('#tseboo-char-count').textContent = sebooCountLabel(e.target.value);
+  }
+});
+
+// 한 학생의 세특을 생성하여 state에 저장 (단일·일괄 공용)
+async function runSebooGeneration(stu, { onToken } = {}) {
+  const subject = state.sebooSubject;
+  const topicSel = state.sebooStudentTopics[stu] || new Set();
+  const selectedTopics = state.sebooTopics.filter(t => topicSel.has(t.id) && t.text.trim());
+  const extra = state.sebooStudentExtra[stu] || '';
+  const targetLen = state.sebooTargetLen;
+  const topicLines = selectedTopics.map(t => `- ${t.text.trim()}`).join('\n');
+
+  let historySection = '';
+  const hist = state.sebooHistory[subject] || [];
+  if (hist.length) {
+    const block = hist.map((t, i) => `[이력 ${i+1}]\n${t}`).join('\n\n');
+    historySection = `
+
+[기존 사용된 표현 이력 - '${subject}' 과목]
+아래는 같은 과목에서 다른 학생들에게 이미 사용한 세특 문구입니다.
+${block}
+
+[중복 방지 지침 - 매우 중요]
+- 위 이력의 문장 구조, 어휘 조합, 상투적 표현, 마무리 어구를 반복하지 말 것
+- 동일한 활동·개념을 서술하더라도 새로운 단어 선택과 문장 흐름으로 표현할 것
+- 단, 사용자가 입력한 '추가 참고사항'은 이력에 동일 내용이 있더라도 반드시 반영할 것`;
+  }
+
+  const userPrompt = `학생 이름: ${stu}
+과목: ${subject}
+이 학생이 수업에서 다루고 성취한 학습 주제:
+${topicLines}
+추가 참고사항: ${extra.trim() || '없음'}
+목표 분량: 약 ${targetLen}자 (이 분량을 넘기지 말 것)
+${historySection}
+
+위 '학습 주제' 각각을 본문에 반영하되, 학생이 각 주제를 학습·탐구하여 성취하였음이 드러나도록 '${subject}' 과목 '세부능력 및 특기사항'을 목표 분량에 맞춰 작성해주세요. '어떤 주제를 다루었고 그 주제를 성취함'이 자연스럽게 드러나도록 서술하세요.`;
+
+  const text = await callLLMStream({
+    prompt: userPrompt,
+    system: SEBOOK_SYSTEM_PROMPT,
+    temperature: 0.7,
+    onToken,
+  });
+  state.sebooStudentResult[stu] = text;
+  (state.sebooHistory[subject] = state.sebooHistory[subject] || []).push(text);
+  return text;
+}
+
+$('#tseboo-generate').addEventListener('click', async () => {
+  const stu = state.sebooSelectedStudent;
+  if (!stu) return;
+  if (!state.sebooTopics.length) {
+    alert("먼저 '📋 PDF에서 주제 추출' 또는 '➕ 주제 추가'로 학습 주제를 만들어주세요."); return;
+  }
+  const topicSel = state.sebooStudentTopics[stu] || new Set();
+  const selectedTopics = state.sebooTopics.filter(t => topicSel.has(t.id) && t.text.trim());
+  if (!selectedTopics.length) {
+    alert('이 학생이 성취한 주제를 1개 이상 선택해주세요.'); return;
+  }
+  if (!(await checkLLMServer())) {
+    alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return;
+  }
+
+  const btn = $('#tseboo-generate');
+  btn.disabled = true; btn.textContent = '⏳ 작성 중...';
+  const rw = $('#tseboo-result-wrap');
+  const ta = $('#tseboo-result');
+  rw.style.display = '';
+  ta.value = '';
+  try {
+    await runSebooGeneration(stu, {
+      onToken: (_chunk, full) => {
+        if (state.sebooSelectedStudent !== stu) return;
+        ta.value = full;
+        ta.scrollTop = ta.scrollHeight;
+        $('#tseboo-char-count').textContent = sebooCountLabel(full);
+      },
+    });
+    renderTabSeboo();
+  } catch (e) {
+    alert('❌ LLM 호출 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✍️ 세특 작성 요청';
+  }
+});
+
+$('#tseboo-generate-all').addEventListener('click', async () => {
+  if (!state.sebooTopics.length) {
+    alert("먼저 '📋 PDF에서 주제 추출' 또는 '➕ 주제 추가'로 학습 주제를 만들어주세요."); return;
+  }
+  const names = getNames();
+  const targets = names.filter(n => {
+    const sel = state.sebooStudentTopics[n] || new Set();
+    return state.sebooTopics.some(t => sel.has(t.id) && t.text.trim());
+  });
+  if (!targets.length) {
+    alert('성취 주제를 선택한 학생이 없습니다. 학생별로 주제를 먼저 선택해주세요.'); return;
+  }
+  if (!(await checkLLMServer())) {
+    alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return;
+  }
+  if (!confirm(`주제가 선택된 ${targets.length}명의 '${state.sebooSubject}' 세특을 순서대로 작성합니다.\n계속할까요?`)) return;
+
+  const allBtn = $('#tseboo-generate-all');
+  const oneBtn = $('#tseboo-generate');
+  allBtn.disabled = true; oneBtn.disabled = true;
+  const rw = $('#tseboo-result-wrap');
+  const ta = $('#tseboo-result');
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      const stu = targets[i];
+      // 직전에 생성 중이던 학생을 계속 보고 있었으면 현재 학생을 자동으로 따라가고,
+      // 사용자가 다른(완료된) 학생을 보고 있으면 그 화면을 건드리지 않음
+      const following = i === 0 || state.sebooSelectedStudent === targets[i - 1];
+      if (following) {
+        state.sebooSelectedStudent = stu;
+        renderTabSeboo();
+        rw.style.display = '';
+        ta.value = '';
+      }
+      allBtn.textContent = `⏳ ${i+1}/${targets.length} ${stu} 작성 중...`;
+      await runSebooGeneration(stu, {
+        onToken: (_chunk, full) => {
+          if (state.sebooSelectedStudent !== stu) return;
+          ta.value = full;
+          ta.scrollTop = ta.scrollHeight;
+          $('#tseboo-char-count').textContent = sebooCountLabel(full);
+        },
+      });
+      renderTabSeboo();
+    }
+    alert(`✅ ${targets.length}명 작성 완료!`);
+  } catch (e) {
+    alert('❌ 일괄 작성 중 오류: ' + e.message);
+  } finally {
+    allBtn.disabled = false; oneBtn.disabled = false;
+    allBtn.textContent = '📝 전체 학생 일괄 작성';
+  }
+});
+
+$('#tseboo-shorten').addEventListener('click', async () => {
+  const stu = state.sebooSelectedStudent;
+  if (!stu) return;
+  const cur = state.sebooStudentResult[stu] || '';
+  if (!cur.trim()) { alert('먼저 세특을 생성해주세요.'); return; }
+  if (!(await checkLLMServer())) { alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return; }
+
+  const targetLen = state.sebooTargetLen;
+  const prompt = `아래 '과목별 세부능력 및 특기사항'을 핵심 내용과 구체적 사례는 유지하되 약 ${targetLen}자 이내로 자연스럽게 줄여주세요. 개조식/명사형 종결어미를 유지하고, 학생 이름은 넣지 마세요.
+
+[원문]
+${cur}`;
+
+  const btn = $('#tseboo-shorten');
+  btn.disabled = true; btn.textContent = '⏳ 줄이는 중...';
+  const ta = $('#tseboo-result');
+  ta.value = '';
+  try {
+    const text = await callLLMStream({
+      prompt,
+      system: SEBOOK_SYSTEM_PROMPT,
+      temperature: 0.5,
+      onToken: (_chunk, full) => {
+        if (state.sebooSelectedStudent !== stu) return;
+        ta.value = full;
+        ta.scrollTop = ta.scrollHeight;
+        $('#tseboo-char-count').textContent = sebooCountLabel(full);
+      },
+    });
+    state.sebooStudentResult[stu] = text;
+    renderTabSeboo();
+  } catch (e) {
+    alert('❌ LLM 호출 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✂️ 목표 분량으로 줄이기';
+  }
+});
+
+$('#tseboo-download').addEventListener('click', () => {
+  const stu = state.sebooSelectedStudent;
+  if (!stu) return;
+  const text = state.sebooStudentResult[stu] || '';
+  const subject = state.sebooSubject;
+  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${stu}_${subject}_세특.txt`);
+});
+
+$('#tseboo-copy').addEventListener('click', () => {
+  const stu = state.sebooSelectedStudent;
+  if (!stu) return;
+  copyText(state.sebooStudentResult[stu] || '', $('#tseboo-copy'));
+});
+
+/* ─────────────────────────────────────────────
+   탭 2: 자리배치도
+   ───────────────────────────────────────────── */
+function createSeatingGrid(names, rows, cols, fixedSeats, separateStudents) {
+  function tryOnce() {
+    const grid = Array.from({ length: rows }, () => Array(cols).fill(''));
+    const fixedNames = new Set();
+    for (const [key, name] of Object.entries(fixedSeats)) {
+      const [r, c] = key.split(',').map(Number);
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        grid[r][c] = name; fixedNames.add(name);
+      }
+    }
+    const empty = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      if (!grid[r][c]) empty.push([r, c]);
+    }
+    const sepList = [...separateStudents].filter(s => names.includes(s) && !fixedNames.has(s));
+    shuffle(sepList);
+    const rest = names.filter(n => !fixedNames.has(n) && !separateStudents.has(n));
+    shuffle(rest);
+
+    const placedSep = [];
+    for (const [key, name] of Object.entries(fixedSeats)) {
+      if (separateStudents.has(name)) {
+        const [r, c] = key.split(',').map(Number);
+        placedSep.push([r, c]);
+      }
+    }
+
+    for (let i = 0; i < sepList.length; i++) {
+      if (!empty.length) break;
+      let pos;
+      if (i === 0 && !placedSep.length) {
+        pos = empty[Math.floor(Math.random() * empty.length)];
+      } else {
+        let best = null, bestDist = -1;
+        for (const cand of empty) {
+          let minDist = Infinity;
+          for (const [pr, pc] of placedSep) {
+            const d = Math.abs(cand[0] - pr) + Math.abs(cand[1] - pc);
+            if (d < minDist) minDist = d;
+          }
+          if (minDist > bestDist) { bestDist = minDist; best = cand; }
+        }
+        pos = best;
+      }
+      grid[pos[0]][pos[1]] = sepList[i];
+      placedSep.push(pos);
+      const idx = empty.findIndex(p => p[0] === pos[0] && p[1] === pos[1]);
+      empty.splice(idx, 1);
+    }
+
+    for (const student of rest) {
+      if (!empty.length) break;
+      const [r, c] = empty.shift();
+      grid[r][c] = student;
+    }
+
+    let score = 0;
+    for (let i = 0; i < placedSep.length; i++)
+      for (let j = i + 1; j < placedSep.length; j++)
+        score += Math.abs(placedSep[i][0] - placedSep[j][0]) + Math.abs(placedSep[i][1] - placedSep[j][1]);
+    return { grid, score };
+  }
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+  const tries = separateStudents.size ? 75 : 1;
+  let best = null, bestScore = -1;
+  for (let i = 0; i < tries; i++) {
+    const { grid, score } = tryOnce();
+    if (score > bestScore) { best = grid; bestScore = score; }
+  }
+  return best;
+}
+
+function renderTab2() {
+  const names = getNames();
+  if (!names.length) {
+    $('#t2-empty').style.display = '';
+    $('#t2-body').style.display = 'none';
+    return;
+  }
+  $('#t2-empty').style.display = 'none';
+  $('#t2-body').style.display = '';
+
+  state.rows = parseInt($('#t2-rows').value) || 5;
+  state.cols = parseInt($('#t2-cols').value) || 6;
+
+  const total = state.rows * state.cols;
+  const warn = $('#t2-warn'); warn.innerHTML = '';
+  if (total < names.length) {
+    warn.appendChild(alertBox(`⚠️ 좌석 수(${total})가 학생 수(${names.length})보다 부족합니다. 행/열을 늘려주세요.`, 'warn'));
+  }
+
+  // 고정 모드 UI
+  $('#t2-fix-toggle').textContent = state.fixMode ? 'ON' : 'OFF';
+  $('#t2-fix-toggle').classList.toggle('primary', state.fixMode);
+  $('#t2-fix-ui').style.display = state.fixMode ? '' : 'none';
+  if (state.fixMode) renderFixUI(names);
+
+  // 분리 모드 UI
+  $('#t2-sep-toggle').textContent = state.sepMode ? 'ON' : 'OFF';
+  $('#t2-sep-toggle').classList.toggle('primary', state.sepMode);
+  $('#t2-sep-ui').style.display = state.sepMode ? '' : 'none';
+  if (state.sepMode) renderSepUI(names);
+
+  // 배치 결과
+  if (state.seatGrid) {
+    $('#t2-result-wrap').style.display = '';
+    renderSeatGrid();
+  } else {
+    $('#t2-result-wrap').style.display = 'none';
+  }
+}
+
+function renderFixUI(names) {
+  const grid = $('#t2-fix-grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+  const fixedNames = new Set(Object.values(state.fixedSeats));
+
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      const key = `${r},${c}`;
+      const btn = document.createElement('button');
+      btn.className = 'seat-cell';
+      if (state.fixedSeats[key]) {
+        btn.classList.add('fixed');
+        btn.textContent = '📌 ' + state.fixedSeats[key];
+        btn.addEventListener('click', () => {
+          delete state.fixedSeats[key];
+          renderTab2();
+        });
+      } else {
+        btn.classList.add('empty'); btn.textContent = '—';
+        btn.addEventListener('click', () => {
+          const sel = state.fixSelectedStudent;
+          if (sel && names.includes(sel)) {
+            // 같은 학생이 다른 자리에 고정돼 있으면 해제
+            for (const k of Object.keys(state.fixedSeats)) {
+              if (state.fixedSeats[k] === sel) delete state.fixedSeats[k];
+            }
+            state.fixedSeats[key] = sel;
+            state.fixSelectedStudent = null;
+            renderTab2();
+          }
+        });
+      }
+      grid.appendChild(btn);
+    }
+  }
+
+  const sw = $('#t2-fix-students'); sw.innerHTML = '';
+  names.forEach(n => {
+    const b = document.createElement('button');
+    if (fixedNames.has(n)) {
+      b.textContent = '✓ ' + n; b.disabled = true;
+    } else if (state.fixSelectedStudent === n) {
+      b.textContent = n; b.classList.add('selected');
+      b.addEventListener('click', () => { state.fixSelectedStudent = null; renderTab2(); });
+    } else {
+      b.textContent = n;
+      b.addEventListener('click', () => { state.fixSelectedStudent = n; renderTab2(); });
+    }
+    sw.appendChild(b);
+  });
+
+  $('#t2-fix-info').textContent = state.fixSelectedStudent
+    ? `선택됨: ${state.fixSelectedStudent} → 원하는 자리를 클릭하세요` : '';
+}
+
+function renderSepUI(names) {
+  const sw = $('#t2-sep-students'); sw.innerHTML = '';
+  names.forEach(n => {
+    const b = document.createElement('button');
+    if (state.sepStudents.has(n)) {
+      b.textContent = '★ ' + n; b.classList.add('selected');
+      b.addEventListener('click', () => { state.sepStudents.delete(n); renderTab2(); });
+    } else {
+      b.textContent = n;
+      b.addEventListener('click', () => { state.sepStudents.add(n); renderTab2(); });
+    }
+    sw.appendChild(b);
+  });
+  $('#t2-sep-info').textContent = state.sepStudents.size
+    ? `선택된 학생: ${[...state.sepStudents].sort().join(', ')}` : '';
+}
+
+function renderSeatGrid() {
+  const grid = $('#t2-grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${state.seatGrid[0].length}, 1fr)`;
+  for (let r = 0; r < state.seatGrid.length; r++) {
+    for (let c = 0; c < state.seatGrid[0].length; c++) {
+      const name = state.seatGrid[r][c];
+      const btn = document.createElement('button');
+      btn.className = 'seat-cell';
+      if (!name) { btn.classList.add('empty'); btn.textContent = '—'; btn.disabled = true; }
+      else {
+        const sel = state.selectedSeat;
+        btn.textContent = (sel && sel[0] === r && sel[1] === c) ? '✅ ' + name : name;
+        if (sel && sel[0] === r && sel[1] === c) btn.classList.add('selected');
+        btn.addEventListener('click', () => {
+          if (!state.selectedSeat) state.selectedSeat = [r, c];
+          else if (state.selectedSeat[0] === r && state.selectedSeat[1] === c) state.selectedSeat = null;
+          else {
+            const [sr, sc] = state.selectedSeat;
+            [state.seatGrid[sr][sc], state.seatGrid[r][c]] = [state.seatGrid[r][c], state.seatGrid[sr][sc]];
+            state.selectedSeat = null;
+          }
+          renderTab2();
+        });
+      }
+      grid.appendChild(btn);
+    }
+  }
+  $('#t2-swap-info').textContent = state.selectedSeat
+    ? `✅ ${state.seatGrid[state.selectedSeat[0]][state.selectedSeat[1]]} 선택됨 — 교환할 자리를 클릭하세요` : '';
+}
+
+$('#t2-rows').addEventListener('input', renderTab2);
+$('#t2-cols').addEventListener('input', renderTab2);
+$('#t2-fix-toggle').addEventListener('click', () => { state.fixMode = !state.fixMode; renderTab2(); });
+$('#t2-sep-toggle').addEventListener('click', () => { state.sepMode = !state.sepMode; renderTab2(); });
+$('#t2-fix-clear').addEventListener('click', () => {
+  state.fixedSeats = {}; state.fixSelectedStudent = null; renderTab2();
+});
+$('#t2-sep-clear').addEventListener('click', () => { state.sepStudents.clear(); renderTab2(); });
+
+$('#t2-generate').addEventListener('click', () => {
+  const names = getNames();
+  if (!names.length) return;
+  state.seatGrid = createSeatingGrid(names, state.rows, state.cols, state.fixedSeats, state.sepStudents);
+  state.selectedSeat = null;
+  renderTab2();
+});
+
+function seatGridToCanvas(grid, title = '자리배치도') {
+  const cellW = 120, cellH = 60, margin = 40, titleH = 60, deskH = 50;
+  const nRows = grid.length, nCols = grid[0].length;
+  const W = margin * 2 + nCols * cellW;
+  const H = margin * 2 + titleH + deskH + nRows * cellH;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white'; ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = 'black';
+  ctx.font = '22px "Noto Sans KR", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(title, W / 2, margin / 2 + 11);
+
+  const deskW = Math.min(200, nCols * cellW);
+  const deskX = margin + (nCols * cellW - deskW) / 2;
+  const deskY = margin + titleH;
+  ctx.fillStyle = '#E8E8E8';
+  ctx.fillRect(deskX, deskY, deskW, deskH);
+  ctx.strokeStyle = '#CCCCCC';
+  ctx.strokeRect(deskX, deskY, deskW, deskH);
+  ctx.fillStyle = '#666666';
+  ctx.font = '16px "Noto Sans KR", sans-serif';
+  ctx.fillText('교 탁', deskX + deskW / 2, deskY + deskH / 2);
+
+  const gridY = margin + titleH + deskH + 10;
+  for (let r = 0; r < nRows; r++) {
+    for (let c = 0; c < nCols; c++) {
+      const x = margin + c * cellW;
+      const y = gridY + r * cellH;
+      const name = grid[r][c];
+      ctx.fillStyle = name ? '#FFFDE7' : '#F5F5F5';
+      ctx.fillRect(x, y, cellW, cellH);
+      ctx.strokeStyle = '#CCCCCC';
+      ctx.strokeRect(x, y, cellW, cellH);
+      if (name) {
+        ctx.fillStyle = 'black';
+        ctx.font = '16px "Noto Sans KR", sans-serif';
+        ctx.fillText(name, x + cellW / 2, y + cellH / 2);
+      }
+    }
+  }
+  return canvas;
+}
+
+$('#t2-dl-png').addEventListener('click', () => {
+  if (!state.seatGrid) return;
+  const canvas = seatGridToCanvas(state.seatGrid);
+  canvas.toBlob((blob) => downloadBlob(blob, `자리배치도_${todayStr()}.png`));
+});
+
+$('#t2-dl-pdf').addEventListener('click', () => {
+  if (!state.seatGrid) return;
+  const canvas = seatGridToCanvas(state.seatGrid);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
+  const imgData = canvas.toDataURL('image/png');
+  // A4 가로: 297 x 210. 여유 두고 277mm 폭에 맞춤
+  const pageW = 277;
+  const ratio = canvas.height / canvas.width;
+  pdf.addImage(imgData, 'PNG', 10, 10, pageW, pageW * ratio);
+  pdf.save(`자리배치도_${todayStr()}.pdf`);
+});
+
+/* ─────────────────────────────────────────────
+   탭 3: 파일 변환기
+   ───────────────────────────────────────────── */
+$$('input[name="t3-mode"]').forEach(r => r.addEventListener('change', () => {
+  const mode = document.querySelector('input[name="t3-mode"]:checked').value;
+  $('#t3-img2pdf').style.display = mode === 'img2pdf' ? '' : 'none';
+  $('#t3-pdf2img').style.display = mode === 'pdf2img' ? '' : 'none';
+  $('#t3-merge').style.display = mode === 'merge' ? '' : 'none';
+}));
+
+// 이미지 → PDF
+$('#t3-img-convert').addEventListener('click', async () => {
+  const files = $('#t3-img-files').files;
+  const resultEl = $('#t3-img-result'); resultEl.innerHTML = '';
+  if (!files.length) {
+    resultEl.appendChild(alertBox('파일을 업로드해주세요.', 'warn')); return;
+  }
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    let first = true;
+    for (const f of files) {
+      const dataUrl = await readAsDataURL(f);
+      const img = await loadImage(dataUrl);
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const ratio = Math.min(190 / w, 277 / h);
+      if (!first) pdf.addPage();
+      first = false;
+      pdf.addImage(dataUrl, 'PNG', 10, 10, w * ratio, h * ratio);
+    }
+    const blob = pdf.output('blob');
+    resultEl.appendChild(alertBox(`✅ ${files.length}개 이미지를 PDF로 변환했습니다.`, 'ok'));
+    const btn = document.createElement('button');
+    btn.className = 'primary'; btn.textContent = '📥 PDF 다운로드';
+    btn.addEventListener('click', () => downloadBlob(blob, `변환_${todayStr(true)}.pdf`));
+    resultEl.appendChild(btn);
+  } catch (e) {
+    resultEl.appendChild(alertBox('❌ 변환 실패: ' + e.message, 'err'));
+  }
+});
+
+function readAsDataURL(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+function readAsArrayBuffer(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
+}
+function loadImage(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = rej;
+    img.src = src;
+  });
+}
+
+// PDF → 이미지
+$('#t3-pdf-convert').addEventListener('click', async () => {
+  const file = $('#t3-pdf-file').files[0];
+  const resultEl = $('#t3-pdf-result'); resultEl.innerHTML = '';
+  if (!file) { resultEl.appendChild(alertBox('파일을 업로드해주세요.', 'warn')); return; }
+  try {
+    const ab = await readAsArrayBuffer(file);
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    const zip = new JSZip();
+    resultEl.appendChild(alertBox(`✅ ${pdf.numPages}페이지를 이미지로 변환합니다...`, 'ok'));
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/png');
+      // 미리보기
+      const img = document.createElement('img');
+      img.src = dataUrl; img.className = 'img-preview';
+      const cap = document.createElement('div'); cap.className = 'caption';
+      cap.textContent = `페이지 ${i}`;
+      resultEl.appendChild(cap); resultEl.appendChild(img);
+      // ZIP에 추가
+      const b64 = dataUrl.split(',')[1];
+      zip.file(`page_${String(i).padStart(3, '0')}.png`, b64, { base64: true });
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const btn = document.createElement('button');
+    btn.className = 'primary'; btn.textContent = '📥 ZIP으로 다운로드';
+    btn.addEventListener('click', () => downloadBlob(blob, `pdf_images_${todayStr(true)}.zip`));
+    resultEl.appendChild(btn);
+  } catch (e) {
+    resultEl.appendChild(alertBox('❌ 변환 실패: ' + e.message, 'err'));
+  }
+});
+
+// PDF 합치기
+let mergeOrder = [];
+let mergeFiles = [];
+$('#t3-merge-files').addEventListener('change', async (e) => {
+  mergeFiles = Array.from(e.target.files);
+  mergeOrder = mergeFiles.map((_, i) => i);
+  renderMergeList();
+});
+
+async function renderMergeList() {
+  const listEl = $('#t3-merge-list'); listEl.innerHTML = '';
+  const convertBtn = $('#t3-merge-convert');
+  if (mergeFiles.length < 2) {
+    if (mergeFiles.length === 1) listEl.appendChild(alertBox('2개 이상의 PDF 파일을 업로드해주세요.', 'warn'));
+    convertBtn.style.display = 'none';
+    return;
+  }
+  convertBtn.style.display = '';
+
+  // 페이지 수 계산
+  const pageCounts = [];
+  for (const i of mergeOrder) {
+    const ab = await readAsArrayBuffer(mergeFiles[i]);
+    const doc = await PDFLib.PDFDocument.load(ab);
+    pageCounts.push(doc.getPageCount());
+  }
+
+  const header = document.createElement('div');
+  header.innerHTML = '<strong>파일 순서:</strong>';
+  listEl.appendChild(header);
+
+  let cum = 0;
+  for (let idx = 0; idx < mergeOrder.length; idx++) {
+    const f = mergeFiles[mergeOrder[idx]];
+    const pc = pageCounts[idx];
+    const start = cum + 1, end = cum + pc;
+    cum = end;
+    const row = document.createElement('div');
+    row.className = 'merge-row';
+    row.innerHTML = `
+      <span>${idx + 1}</span>
+      <span>${f.name}</span>
+      <span>${pc}p</span>
+      <span>${start}~${end}</span>
+      <span class="move"></span>
+    `;
+    const moveCell = row.querySelector('.move');
+    if (idx > 0) {
+      const up = document.createElement('button'); up.textContent = '▲';
+      up.addEventListener('click', () => {
+        [mergeOrder[idx], mergeOrder[idx - 1]] = [mergeOrder[idx - 1], mergeOrder[idx]];
+        renderMergeList();
+      });
+      moveCell.appendChild(up);
+    }
+    if (idx < mergeOrder.length - 1) {
+      const dn = document.createElement('button'); dn.textContent = '▼';
+      dn.addEventListener('click', () => {
+        [mergeOrder[idx], mergeOrder[idx + 1]] = [mergeOrder[idx + 1], mergeOrder[idx]];
+        renderMergeList();
+      });
+      moveCell.appendChild(dn);
+    }
+    listEl.appendChild(row);
+  }
+  const cap = document.createElement('div'); cap.className = 'caption';
+  cap.textContent = `총 ${mergeFiles.length}개 파일 · ${pageCounts.reduce((a, b) => a + b, 0)}페이지`;
+  listEl.appendChild(cap);
+}
+
+$('#t3-merge-convert').addEventListener('click', async () => {
+  const resultEl = $('#t3-merge-result'); resultEl.innerHTML = '';
+  try {
+    const merged = await PDFLib.PDFDocument.create();
+    for (const i of mergeOrder) {
+      const ab = await readAsArrayBuffer(mergeFiles[i]);
+      const src = await PDFLib.PDFDocument.load(ab);
+      const pages = await merged.copyPages(src, src.getPageIndices());
+      for (const p of pages) merged.addPage(p);
+    }
+    const bytes = await merged.save();
+    resultEl.appendChild(alertBox('✅ PDF 합치기 완료!', 'ok'));
+    const btn = document.createElement('button');
+    btn.className = 'primary'; btn.textContent = '📥 합친 PDF 다운로드';
+    btn.addEventListener('click', () => downloadBlob(new Blob([bytes], { type: 'application/pdf' }), `합침_${todayStr(true)}.pdf`));
+    resultEl.appendChild(btn);
+  } catch (e) {
+    resultEl.appendChild(alertBox('❌ 합치기 실패: ' + e.message, 'err'));
+  }
+});
+
+/* ─────────────────────────────────────────────
+   탭 4: 문제 은행 / 학습지
+   ───────────────────────────────────────────── */
+const QUESTION_GEN_PROMPT = (numMC, numSA, difficulty) => `당신은 한국 중학교 교사용 문제 출제 전문가입니다.
+첨부된 PDF 교재 내용을 분석하여 다음 작업을 수행하세요.
+
+1. 핵심 내용을 한국어로 3~5문장 요약
+2. 객관식 문제 ${numMC}개 생성 (4지선다, 정답 번호는 1~4 중 하나)
+3. 주관식 문제 ${numSA}개 생성 (단답형)
+4. 난이도: ${difficulty}
+
+각 문제는 PDF 내용에 근거해야 하며 명확한 해설을 포함해야 합니다.
+응답은 반드시 다음 JSON 스키마를 따르고 다른 텍스트는 포함하지 마세요.
+
+{
+  "summary": "교재 핵심 요약",
+  "multiple_choice": [
+    {"question": "문제", "choices": ["①...", "②...", "③...", "④..."], "answer": 1, "explanation": "해설"}
+  ],
+  "short_answer": [
+    {"question": "문제", "answer": "정답", "explanation": "해설"}
+  ]
+}
+`;
+
+$('#t4-pdf').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  const info = $('#t4-info'); info.innerHTML = '';
+  $('#t4-controls').style.display = 'none';
+  state.qbankResult = null; $('#t4-result').innerHTML = '';
+  if (!f) return;
+  try {
+    const ab = await readAsArrayBuffer(f);
+    state.qbankPdfBytes = ab;
+    const doc = await PDFLib.PDFDocument.load(ab);
+    state.qbankPages = doc.getPageCount();
+    info.innerHTML = `<p class="caption">총 ${state.qbankPages}페이지</p>`;
+    $('#t4-controls').style.display = '';
+    if (state.qbankPages > 1) {
+      $('#t4-range-wrap').style.display = '';
+      const s = $('#t4-start'), e2 = $('#t4-end');
+      s.max = state.qbankPages; s.value = 1;
+      e2.max = state.qbankPages; e2.value = Math.min(state.qbankPages, 10);
+      $('#t4-start-val').textContent = s.value;
+      $('#t4-end-val').textContent = e2.value;
+    } else {
+      $('#t4-range-wrap').style.display = 'none';
+    }
+  } catch (err) {
+    info.appendChild(alertBox('❌ PDF 읽기 실패: ' + err.message, 'err'));
+  }
+});
+
+$('#t4-use-range').addEventListener('change', (e) => {
+  $('#t4-range-controls').style.display = e.target.checked ? '' : 'none';
+});
+$('#t4-start').addEventListener('input', (e) => { $('#t4-start-val').textContent = e.target.value; });
+$('#t4-end').addEventListener('input', (e) => { $('#t4-end-val').textContent = e.target.value; });
+$('#t4-num-mc').addEventListener('input', (e) => { $('#t4-num-mc-val').textContent = e.target.value; });
+$('#t4-num-sa').addEventListener('input', (e) => { $('#t4-num-sa-val').textContent = e.target.value; });
+
+async function slicePDF(bytes, start, end) {
+  const src = await PDFLib.PDFDocument.load(bytes);
+  const out = await PDFLib.PDFDocument.create();
+  const total = src.getPageCount();
+  const s = Math.max(0, start - 1);
+  const e = Math.min(total, end);
+  const idxs = [];
+  for (let i = s; i < e; i++) idxs.push(i);
+  const pages = await out.copyPages(src, idxs);
+  for (const p of pages) out.addPage(p);
+  return await out.save();
+}
+
+$('#t4-generate').addEventListener('click', async () => {
+  if (!state.qbankPdfBytes) return;
+  const numMC = parseInt($('#t4-num-mc').value);
+  const numSA = parseInt($('#t4-num-sa').value);
+  const difficulty = document.querySelector('input[name="t4-diff"]:checked').value;
+  if (numMC === 0 && numSA === 0) {
+    alert('객관식 또는 주관식 중 최소 1개 이상 생성해주세요.'); return;
+  }
+  if (!(await checkLLMServer())) {
+    alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return;
+  }
+
+  let start = 1, end = state.qbankPages;
+  if (state.qbankPages > 1 && $('#t4-use-range').checked) {
+    start = parseInt($('#t4-start').value);
+    end = parseInt($('#t4-end').value);
+    if (start > end) [start, end] = [end, start];
+  }
+
+  const btn = $('#t4-generate');
+  btn.disabled = true; btn.textContent = '⏳ 생성 중...';
+  try {
+    const sliced = await slicePDF(state.qbankPdfBytes, start, end);
+    const text = await callLLM({
+      prompt: QUESTION_GEN_PROMPT(numMC, numSA, difficulty),
+      files: [{ name: 'source.pdf', blob: new Blob([sliced], { type: 'application/pdf' }), type: 'application/pdf' }],
+      jsonMode: true,
+    });
+    state.qbankResult = JSON.parse(text.trim());
+    renderQbankResult();
+  } catch (e) {
+    alert('❌ 문제 생성 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🤖 문제 생성';
+  }
+});
+
+function renderQbankResult() {
+  const wrap = $('#t4-result'); wrap.innerHTML = '';
+  if (!state.qbankResult) return;
+  const r = state.qbankResult;
+  wrap.appendChild(document.createElement('hr'));
+
+  const sumH = document.createElement('h4'); sumH.textContent = '📋 핵심 요약 (편집 가능)';
+  wrap.appendChild(sumH);
+  const sumTa = document.createElement('textarea');
+  sumTa.value = r.summary || ''; sumTa.style.height = '100px';
+  sumTa.addEventListener('input', () => { r.summary = sumTa.value; });
+  wrap.appendChild(sumTa);
+
+  const mcList = r.multiple_choice || [];
+  const saList = r.short_answer || [];
+
+  if (mcList.length) {
+    const h = document.createElement('h4'); h.textContent = '■ 객관식'; wrap.appendChild(h);
+    mcList.forEach((q, i) => {
+      const det = document.createElement('details');
+      const sm = document.createElement('summary');
+      sm.textContent = `객관식 ${i+1}. ${(q.question || '').slice(0, 40)}`;
+      det.appendChild(sm);
+      det.appendChild(makeField('문제', q, 'question', 'textarea'));
+      const choices = Array.isArray(q.choices) ? q.choices.slice() : [];
+      while (choices.length < 4) choices.push('');
+      q.choices = choices;
+      for (let c = 0; c < 4; c++) {
+        const lbl = document.createElement('label'); lbl.textContent = `보기 ${c+1}`;
+        const ip = document.createElement('input');
+        ip.type = 'text'; ip.value = choices[c];
+        ip.addEventListener('input', () => { q.choices[c] = ip.value; });
+        det.appendChild(lbl); det.appendChild(ip);
+      }
+      const lblA = document.createElement('label'); lblA.textContent = '정답 (1~4)';
+      const ipA = document.createElement('input');
+      ipA.type = 'number'; ipA.min = 1; ipA.max = 4; ipA.value = q.answer || 1;
+      ipA.addEventListener('input', () => { q.answer = parseInt(ipA.value) || 1; });
+      det.appendChild(lblA); det.appendChild(ipA);
+      det.appendChild(makeField('해설', q, 'explanation', 'textarea'));
+      wrap.appendChild(det);
+    });
+  }
+
+  if (saList.length) {
+    const h = document.createElement('h4'); h.textContent = '■ 주관식'; wrap.appendChild(h);
+    saList.forEach((q, i) => {
+      const det = document.createElement('details');
+      const sm = document.createElement('summary');
+      sm.textContent = `주관식 ${i+1}. ${(q.question || '').slice(0, 40)}`;
+      det.appendChild(sm);
+      det.appendChild(makeField('문제', q, 'question', 'textarea'));
+      det.appendChild(makeField('정답', q, 'answer', 'text'));
+      det.appendChild(makeField('해설', q, 'explanation', 'textarea'));
+      wrap.appendChild(det);
+    });
+  }
+
+  wrap.appendChild(document.createElement('hr'));
+  const pdfBtn = document.createElement('button');
+  pdfBtn.className = 'primary'; pdfBtn.textContent = '📄 학습지 PDF 생성';
+  pdfBtn.addEventListener('click', generateWorksheetPDF);
+  wrap.appendChild(pdfBtn);
+  const dlSlot = document.createElement('div'); dlSlot.id = 't4-pdf-dl'; dlSlot.style.marginTop = '10px';
+  wrap.appendChild(dlSlot);
+}
+
+function makeField(label, obj, key, kind) {
+  const div = document.createElement('div');
+  const l = document.createElement('label'); l.textContent = label;
+  const el = document.createElement(kind === 'textarea' ? 'textarea' : 'input');
+  if (kind !== 'textarea') el.type = 'text';
+  el.value = obj[key] || '';
+  el.addEventListener('input', () => { obj[key] = el.value; });
+  div.appendChild(l); div.appendChild(el);
+  return div;
+}
+
+function generateWorksheetPDF() {
+  const r = state.qbankResult; if (!r) return;
+  const title = $('#t4-title').value || '학습지';
+  const includeAns = $('#t4-include-ans').checked;
+  const mc = r.multiple_choice || [];
+  const sa = r.short_answer || [];
+
+  // 캔버스로 페이지 렌더링 → jsPDF에 이미지로 삽입 (한글 폰트 임베드 우회)
+  const pageW = 794;  // 96dpi 기준 A4
+  const pageH = 1123;
+  const pad = 60;
+  const ctxFont = (size, weight = 400) => `${weight} ${size}px "Noto Sans KR", sans-serif`;
+
+  const pages = [];
+  let canvas = newPage();
+  let ctx = canvas.getContext('2d');
+  let y = pad;
+
+  function newPage() {
+    const c = document.createElement('canvas');
+    c.width = pageW; c.height = pageH;
+    const cx = c.getContext('2d');
+    cx.fillStyle = 'white'; cx.fillRect(0, 0, pageW, pageH);
+    pages.push(c);
+    return c;
+  }
+  function ensureSpace(h) {
+    if (y + h > pageH - pad) {
+      canvas = newPage(); ctx = canvas.getContext('2d'); y = pad;
+    }
+  }
+  function drawLine(text, size, weight = 400, indent = 0) {
+    ctx.fillStyle = 'black';
+    ctx.font = ctxFont(size, weight);
+    ctx.textBaseline = 'top';
+    const maxW = pageW - pad * 2 - indent;
+    const lines = wrapText(ctx, text, maxW);
+    for (const ln of lines) {
+      ensureSpace(size * 1.5);
+      ctx.fillText(ln, pad + indent, y);
+      y += size * 1.5;
+    }
+  }
+  function wrapText(ctx, text, maxW) {
+    const result = [];
+    for (const para of String(text || '').split('\n')) {
+      let line = '';
+      for (const ch of para) {
+        const test = line + ch;
+        if (ctx.measureText(test).width > maxW && line) {
+          result.push(line); line = ch;
+        } else line = test;
+      }
+      result.push(line);
+    }
+    return result;
+  }
+
+  // 제목
+  ctx.fillStyle = 'black';
+  ctx.font = ctxFont(28, 700); ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+  ctx.fillText(title, pageW / 2, y); ctx.textAlign = 'left';
+  y += 50;
+
+  if (r.summary) {
+    drawLine(`[핵심 요약] ${r.summary}`, 13);
+    y += 10;
+  }
+
+  let qno = 1;
+  if (mc.length) {
+    y += 5; drawLine('■ 객관식', 18, 700); y += 5;
+    for (const q of mc) {
+      drawLine(`${qno}. ${q.question || ''}`, 14);
+      for (const ch of (q.choices || [])) drawLine(`   ${ch}`, 13);
+      y += 8; qno++;
+    }
+  }
+  if (sa.length) {
+    y += 5; drawLine('■ 주관식', 18, 700); y += 5;
+    for (const q of sa) {
+      drawLine(`${qno}. ${q.question || ''}`, 14);
+      drawLine('   답: ______________________________', 13);
+      y += 8; qno++;
+    }
+  }
+
+  if (includeAns && (mc.length || sa.length)) {
+    canvas = newPage(); ctx = canvas.getContext('2d'); y = pad;
+    ctx.font = ctxFont(22, 700); ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+    ctx.fillText('정답 및 해설', pageW / 2, y); ctx.textAlign = 'left';
+    y += 40;
+    qno = 1;
+    for (const q of mc) {
+      const ansIdx = parseInt(q.answer) || 1;
+      const choices = q.choices || [];
+      const ansText = (ansIdx >= 1 && ansIdx <= choices.length) ? choices[ansIdx - 1] : String(ansIdx);
+      drawLine(`${qno}. 정답: ${ansText}`, 14);
+      if (q.explanation) drawLine(`   해설: ${q.explanation}`, 13);
+      y += 6; qno++;
+    }
+    for (const q of sa) {
+      drawLine(`${qno}. 정답: ${q.answer || ''}`, 14);
+      if (q.explanation) drawLine(`   해설: ${q.explanation}`, 13);
+      y += 6; qno++;
+    }
+  }
+
+  // jsPDF로 다중 페이지 PDF 생성
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const mmW = 210, mmH = 297;
+  pages.forEach((c, i) => {
+    if (i > 0) pdf.addPage();
+    pdf.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, mmW, mmH);
+  });
+  const blob = pdf.output('blob');
+  const slot = $('#t4-pdf-dl'); slot.innerHTML = '';
+  slot.appendChild(alertBox('✅ 학습지 PDF가 준비되었습니다.', 'ok'));
+  const dl = document.createElement('button');
+  dl.className = 'primary'; dl.textContent = '📥 학습지 PDF 다운로드';
+  dl.addEventListener('click', () => downloadBlob(blob, `${title}_${todayStr(true)}.pdf`));
+  slot.appendChild(dl);
+}
+
+/* ─────────────────────────────────────────────
+   탭 5: 공문 요약 / 일정 추출
+   ───────────────────────────────────────────── */
+const DOC_ANALYSIS_PROMPT = (today) => `당신은 학교 행정 업무를 보조하는 AI입니다.
+첨부된 공문(또는 본문 텍스트)을 분석하여 다음 작업을 수행하세요.
+
+1. 공문 핵심 내용을 한국어로 3~5문장 요약
+2. 공문에 언급된 모든 일정/마감일/행사를 추출
+3. 각 일정별로 "가져와야 할 서류/제출 서류/지참물"을 추출
+
+오늘 날짜는 ${today} 입니다. "다음 주", "이번 달 말" 같은 상대 날짜는 오늘 날짜를 기준으로 절대 날짜(YYYY-MM-DD)로 변환하세요.
+
+응답은 반드시 다음 JSON 스키마를 따르고 다른 텍스트는 포함하지 마세요.
+
+{
+  "summary": "공문 핵심 요약",
+  "events": [
+    {
+      "title": "일정/행사명",
+      "date": "2026-05-20",
+      "end_date": null,
+      "time": "14:00",
+      "location": "장소",
+      "description": "추가 설명",
+      "type": "deadline",
+      "documents": ["신청서", "재직증명서"]
+    }
+  ]
+}
+
+규칙:
+- date는 YYYY-MM-DD 형식 필수
+- end_date는 다중일 일정인 경우만 채우고, 아니면 null
+- time은 HH:MM (24시간제), 시간 미지정이면 null
+- type은 "deadline"(마감), "event"(행사), "meeting"(회의) 중 하나
+- documents는 해당 일정에 가져가거나 제출해야 할 서류/지참물 목록 (문자열 배열). 공문에 명시된 것만 포함하고, 없으면 빈 배열 []
+- 일정이 없으면 events는 빈 배열
+`;
+
+$$('input[name="t5-mode"]').forEach(r => r.addEventListener('change', () => {
+  const m = document.querySelector('input[name="t5-mode"]:checked').value;
+  $('#t5-pdf-wrap').style.display = m === 'pdf' ? '' : 'none';
+  $('#t5-text-wrap').style.display = m === 'text' ? '' : 'none';
+}));
+
+$('#t5-pdf').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  const info = $('#t5-pdf-info'); info.innerHTML = '';
+  if (!f) { state.docPdfBytes = null; return; }
+  try {
+    const ab = await readAsArrayBuffer(f);
+    state.docPdfBytes = ab;
+    const doc = await PDFLib.PDFDocument.load(ab);
+    info.innerHTML = `<p class="caption">총 ${doc.getPageCount()}페이지</p>`;
+  } catch (err) {
+    info.appendChild(alertBox('❌ PDF 읽기 실패: ' + err.message, 'err'));
+  }
+});
+
+$('#t5-analyze').addEventListener('click', async () => {
+  const mode = document.querySelector('input[name="t5-mode"]:checked').value;
+  if (mode === 'pdf' && !state.docPdfBytes) { alert('PDF 파일을 업로드해주세요.'); return; }
+  const text = $('#t5-text').value;
+  if (mode === 'text' && !text.trim()) { alert('공문 본문을 입력해주세요.'); return; }
+  if (!(await checkLLMServer())) { alert(`로컬 LLM 서버에 연결할 수 없습니다.\nURL: ${LLM_URL}`); return; }
+
+  const btn = $('#t5-analyze');
+  btn.disabled = true; btn.textContent = '⏳ 분석 중...';
+  try {
+    let raw;
+    if (mode === 'pdf') {
+      raw = await callLLM({
+        prompt: DOC_ANALYSIS_PROMPT(todayISO()),
+        files: [{ name: 'doc.pdf', blob: new Blob([state.docPdfBytes], { type: 'application/pdf' }), type: 'application/pdf' }],
+        jsonMode: true,
+      });
+    } else {
+      raw = await callLLM({
+        prompt: DOC_ANALYSIS_PROMPT(todayISO()) + '\n\n--- 공문 본문 ---\n' + text,
+        jsonMode: true,
+      });
+    }
+    state.docResult = JSON.parse(raw.trim());
+    renderDocResult();
+  } catch (e) {
+    alert('❌ 분석 실패: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 분석 시작';
+  }
+});
+
+function renderDocResult() {
+  const wrap = $('#t5-result'); wrap.innerHTML = '';
+  if (!state.docResult) return;
+  const r = state.docResult;
+  wrap.appendChild(document.createElement('hr'));
+
+  const sh = document.createElement('h4'); sh.textContent = '📋 요약 (편집 가능)';
+  wrap.appendChild(sh);
+  const sumTa = document.createElement('textarea');
+  sumTa.value = r.summary || ''; sumTa.style.height = '120px';
+  sumTa.addEventListener('input', () => { r.summary = sumTa.value; });
+  wrap.appendChild(sumTa);
+
+  const eh = document.createElement('h4'); eh.textContent = '📅 추출된 일정 (셀 클릭으로 편집, 행 추가/삭제 가능)';
+  wrap.appendChild(eh);
+
+  const events = (r.events && r.events.length) ? r.events.map(normalizeEvent) : [];
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `
+    <thead><tr>
+      <th>제목</th><th>날짜</th><th>시간</th><th>장소</th>
+      <th>필요한 서류</th><th>비고</th><th>종류</th><th></th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tbody = tbl.querySelector('tbody');
+
+  function makeRow(ev) {
+    const tr = document.createElement('tr');
+    const fields = [
+      ['title', 'text'], ['date', 'text'], ['time', 'text'],
+      ['location', 'text'], ['documents', 'docs'], ['description', 'text'],
+      ['type', 'select'],
+    ];
+    for (const [key, kind] of fields) {
+      const td = document.createElement('td');
+      if (kind === 'select') {
+        const sel = document.createElement('select');
+        for (const opt of ['event', 'deadline', 'meeting']) {
+          const o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          if (ev.type === opt) o.selected = true;
+          sel.appendChild(o);
+        }
+        sel.addEventListener('change', () => { ev.type = sel.value; });
+        td.appendChild(sel);
+      } else if (kind === 'docs') {
+        const ip = document.createElement('input');
+        ip.type = 'text';
+        ip.value = Array.isArray(ev.documents) ? ev.documents.join(', ') : (ev.documents || '');
+        ip.placeholder = '쉼표로 구분';
+        ip.addEventListener('input', () => {
+          ev.documents = ip.value.split(',').map(s => s.trim()).filter(Boolean);
+        });
+        td.appendChild(ip);
+      } else {
+        const ip = document.createElement('input');
+        ip.type = 'text'; ip.value = ev[key] || '';
+        ip.addEventListener('input', () => { ev[key] = ip.value; });
+        td.appendChild(ip);
+      }
+      tr.appendChild(td);
+    }
+    const delTd = document.createElement('td');
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '삭제';
+    delBtn.addEventListener('click', () => {
+      const idx = events.indexOf(ev);
+      if (idx >= 0) events.splice(idx, 1);
+      tr.remove(); updateCaption();
+    });
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
+    return tr;
+  }
+
+  events.forEach(ev => tbody.appendChild(makeRow(ev)));
+  wrap.appendChild(tbl);
+
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '➕ 일정 추가';
+  addBtn.addEventListener('click', () => {
+    const ev = { title: '', date: '', time: '', location: '', description: '', type: 'event', documents: [] };
+    events.push(ev); tbody.appendChild(makeRow(ev)); updateCaption();
+  });
+  wrap.appendChild(addBtn);
+
+  const cap = document.createElement('p'); cap.className = 'caption';
+  wrap.appendChild(cap);
+  function updateCaption() {
+    const valid = events.filter(e => e.title && e.title.trim() && e.date && e.date.trim());
+    cap.textContent = `유효한 일정 ${valid.length}개 (제목/날짜가 비어 있는 행은 제외)`;
+  }
+  updateCaption();
+
+  // 다운로드 버튼들
+  const dlDiv = document.createElement('div'); dlDiv.className = 'grid-2'; dlDiv.style.marginTop = '12px';
+  const icsBtn = document.createElement('button'); icsBtn.textContent = '📥 ICS 다운로드 (캘린더용)';
+  icsBtn.addEventListener('click', () => {
+    const valid = events.filter(e => e.title && e.date);
+    if (!valid.length) { alert('유효한 일정이 없습니다.'); return; }
+    const bytes = eventsToICS(valid);
+    downloadBlob(new Blob([bytes], { type: 'text/calendar' }), `공문일정_${todayStr(true)}.ics`);
+  });
+  const csvBtn = document.createElement('button'); csvBtn.textContent = '📥 CSV 다운로드 (엑셀용)';
+  csvBtn.addEventListener('click', () => {
+    const valid = events.filter(e => e.title && e.date);
+    if (!valid.length) { alert('유효한 일정이 없습니다.'); return; }
+    const csv = eventsToCSV(valid);
+    downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv' }), `공문일정_${todayStr(true)}.csv`);
+  });
+  dlDiv.appendChild(icsBtn); dlDiv.appendChild(csvBtn);
+  wrap.appendChild(dlDiv);
+
+  // 텍스트 복사
+  const det = document.createElement('details');
+  const sm = document.createElement('summary'); sm.textContent = '📋 텍스트로 복사하기';
+  det.appendChild(sm);
+  const pre = document.createElement('pre');
+  pre.style.whiteSpace = 'pre-wrap'; pre.style.background = '#f5f5f5';
+  pre.style.padding = '10px'; pre.style.borderRadius = '6px'; pre.style.fontSize = '13px';
+  function refreshCopy() {
+    const lines = [`[요약]\n${sumTa.value}\n`, '[일정]'];
+    for (const ev of events.filter(e => e.title && e.date)) {
+      let line = `- ${ev.date}`;
+      if (ev.time) line += ` ${ev.time}`;
+      line += ` / ${ev.title}`;
+      if (ev.location) line += ` @ ${ev.location}`;
+      const docs = Array.isArray(ev.documents) ? ev.documents.join(', ') : (ev.documents || '');
+      if (docs) line += `  [필요한 서류: ${docs}]`;
+      lines.push(line);
+    }
+    pre.textContent = lines.join('\n');
+  }
+  det.addEventListener('toggle', refreshCopy);
+  sumTa.addEventListener('input', refreshCopy);
+  det.appendChild(pre);
+  wrap.appendChild(det);
+}
+
+function normalizeEvent(ev) {
+  return {
+    title: ev.title || '',
+    date: ev.date || '',
+    end_date: ev.end_date || null,
+    time: ev.time || '',
+    location: ev.location || '',
+    description: ev.description || '',
+    type: ev.type || 'event',
+    documents: Array.isArray(ev.documents) ? ev.documents : (ev.documents ? [ev.documents] : []),
+  };
+}
+
+function icsEscape(s) {
+  if (s == null) return '';
+  return String(s).replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n');
+}
+function dateCompact(s) { return s.replace(/-/g, ''); }
+function addDaysISO(s, days) {
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+function eventsToICS(events, calendarName = '공문_일정') {
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//School Helper//KR',
+    'CALSCALE:GREGORIAN', `X-WR-CALNAME:${icsEscape(calendarName)}`,
+    'BEGIN:VTIMEZONE', 'TZID:Asia/Seoul',
+    'BEGIN:STANDARD', 'DTSTART:19700101T000000',
+    'TZOFFSETFROM:+0900', 'TZOFFSETTO:+0900', 'TZNAME:KST',
+    'END:STANDARD', 'END:VTIMEZONE',
+  ];
+  const now = new Date();
+  const dtstamp = `${now.getUTCFullYear()}${String(now.getUTCMonth()+1).padStart(2,'0')}${String(now.getUTCDate()).padStart(2,'0')}T${String(now.getUTCHours()).padStart(2,'0')}${String(now.getUTCMinutes()).padStart(2,'0')}${String(now.getUTCSeconds()).padStart(2,'0')}Z`;
+  events.forEach((ev, idx) => {
+    const date = (ev.date || '').trim();
+    if (!date) return;
+    const title = ev.title || '(제목 없음)';
+    const time = (ev.time || '').trim();
+    const endDate = (ev.end_date || '').trim() || null;
+    const uid = `${dtstamp}-${idx}@school-helper`;
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${uid}`); lines.push(`DTSTAMP:${dtstamp}`);
+    lines.push(`SUMMARY:${icsEscape(title)}`);
+    if (time) {
+      const [hStr, mStr = '00'] = time.split(':');
+      const hh = parseInt(hStr) || 0, mm = parseInt(mStr) || 0;
+      const start = `${dateCompact(date)}T${String(hh).padStart(2,'0')}${String(mm).padStart(2,'0')}00`;
+      const eh = (hh + 1) % 24;
+      const end = `${dateCompact(date)}T${String(eh).padStart(2,'0')}${String(mm).padStart(2,'0')}00`;
+      lines.push(`DTSTART;TZID=Asia/Seoul:${start}`);
+      lines.push(`DTEND;TZID=Asia/Seoul:${end}`);
+    } else {
+      lines.push(`DTSTART;VALUE=DATE:${dateCompact(date)}`);
+      try {
+        const endExc = addDaysISO(endDate || date, 1);
+        lines.push(`DTEND;VALUE=DATE:${dateCompact(endExc)}`);
+      } catch {}
+    }
+    if (ev.location) lines.push(`LOCATION:${icsEscape(ev.location)}`);
+    const parts = [];
+    if (ev.description) parts.push(ev.description);
+    const docs = ev.documents;
+    if (docs) {
+      const docsStr = Array.isArray(docs) ? docs.filter(d => String(d).trim()).join(', ') : String(docs);
+      if (docsStr) parts.push(`[필요한 서류: ${docsStr}]`);
+    }
+    if (ev.type) parts.push(`[종류: ${ev.type}]`);
+    if (parts.length) lines.push(`DESCRIPTION:${icsEscape(parts.join(' / '))}`);
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n') + '\r\n';
+}
+
+function eventsToCSV(events) {
+  const cols = ['제목', '날짜', '시간', '장소', '필요한 서류', '비고', '종류'];
+  const rows = [cols];
+  for (const e of events) {
+    const docs = Array.isArray(e.documents) ? e.documents.join(', ') : (e.documents || '');
+    rows.push([e.title, e.date, e.time || '', e.location || '', docs, e.description || '', e.type || 'event']);
+  }
+  return rows.map(r => r.map(csvCell).join(',')).join('\n');
+}
+function csvCell(v) {
+  const s = String(v ?? '');
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+/* ─────────────────────────────────────────────
+   초기 렌더
+   ───────────────────────────────────────────── */
+// 이전 세션에 저장돼 있던 기록이 있으면 1회 삭제(새로 시작)
+try { localStorage.removeItem('school_helper_state_v1'); } catch {}
+renderSidebar();
+onStudentsChanged();
+refreshLLMStatus();
+setInterval(refreshLLMStatus, 15000);
+</script>
+</body>
+</html>
