@@ -161,6 +161,10 @@ def _gemini_generate(prompt, system, temperature, json_mode):
             _gemini_advance(cursor, models)
             continue
         raise HTTPException(status_code=502, detail=f"Gemini API 오류 {r.status_code}: {r.text[:300]}")
+    # 모든 (키, 모델) 조합 소진 → DeepSeek(NVIDIA NIM) 예비 모델로 전환
+    if deepseek_client:
+        print(f"[gemini/추출] 모든 키({nk}개)·모델({nm}개) 소진 → DeepSeek '{DEEPSEEK_MODEL}'로 전환")
+        return _deepseek_generate(prompt, system, temperature, json_mode)
     raise HTTPException(status_code=429, detail=f"모든 Gemini 키({nk}개)·모델({nm}개)의 사용량이 소진되었습니다. 잠시 후 다시 시도하거나 키를 추가하세요.")
 
 
@@ -229,6 +233,28 @@ def _deepseek_stream(prompt, system, temperature):
                 yield {"content": chunk.choices[0].delta.content}
     except Exception as e:
         yield {"error": f"DeepSeek 호출 실패: {e}"}
+
+
+def _deepseek_generate(prompt, system, temperature, json_mode=False):
+    """DeepSeek(NVIDIA NIM) 단발 호출 — 모든 Gemini 키·모델 소진 시 주제 추출 예비용."""
+    kwargs = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": temperature,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        response = deepseek_client.chat.completions.create(**kwargs)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"DeepSeek 호출 실패: {e}")
+    content = response.choices[0].message.content
+    if not content:
+        raise HTTPException(status_code=502, detail="DeepSeek 응답이 비어 있습니다.")
+    return content
 
 
 @asynccontextmanager
@@ -457,5 +483,5 @@ if __name__ == "__main__":
 #               소진되면 DeepSeek(NVIDIA NIM, OpenAI 호환)로 자동 전환해 이어서 작성한다.
 #               .env에 NVIDIA_NIM_API_KEY(aider와 동일한 키)를 넣으면 활성화되고,
 #               DEEPSEEK_MODEL / DEEPSEEK_BASE_URL 로 모델·주소를 바꿀 수 있다.
-#               주제 추출(/generate)은 폴백 없이 기존대로 Gemini만 쓴다.
+#               주제 추출(/generate, provider=gemini)도 같은 방식으로 소진 시 전환된다.
 # ---------------------------------------------------------

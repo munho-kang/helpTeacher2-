@@ -10,3 +10,10 @@ Gemini의 모든 키·모델 사용량 소진 시 생기부 작성을 DeepSeek(N
 - [x] .env에 `NVIDIA_NIM_API_KEY` 추가
 - [x] 소진 상황 재현(가짜 GEMINI_MODELS)으로 폴백 e2e 검증
 - [x] 문서 주석 갱신·커밋
+
+## 2차: 주제 추출에도 폴백 적용 (2026-07-04)
+
+- [x] NVIDIA 키 노출 여부 검증 (git 이력·원격·임시파일 — 노출 없음)
+- [x] server.py: `_deepseek_generate` 추가, `_gemini_generate` 소진 시 전환
+- [x] JSON 모드(`response_format=json_object`) 포함 e2e 검증
+- [x] 문서 주석 갱신·커밋
