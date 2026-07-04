@@ -77,10 +77,19 @@ GEMINI_MODELS = _load_gemini_models()                  # 생기부 작성: 정�
 GEMINI_MODELS_EXTRACT = list(reversed(GEMINI_MODELS))  # 주제 추출: 역순(가벼운 모델 먼저)
 # 회전 커서 [키idx, 모델idx] — 작성/추출은 모델 순서가 달라 시작 지점을 따로 기억한다.
 _gemini_cursor = {"write": [0, 0], "extract": [0, 0]}
+
+# DeepSeek(NVIDIA NIM, OpenAI 호환) — 모든 Gemini 키·모델이 소진되면 생기부 작성을 이어받는
+# 예비 모델. aider에서 쓰는 것과 같은 NVIDIA_NIM_API_KEY(nvapi-...)를 사용한다.
+#   .env 예) NVIDIA_NIM_API_KEY="nvapi-..."
+#           DEEPSEEK_MODEL="deepseek-ai/deepseek-v4-pro"   (기본값)
+DEEPSEEK_BASE_URL = (os.environ.get("DEEPSEEK_BASE_URL") or "https://integrate.api.nvidia.com/v1").strip()
+DEEPSEEK_API_KEY = (os.environ.get("NVIDIA_NIM_API_KEY") or "").strip()
+DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-ai/deepseek-v4-pro").strip()
 SYSTEM_PROMPT = "당신은 명확하고 통찰력 있는 답변을 제공하는 전문적인 AI 어시스턴트입니다."
 TEMPERATURE = 0.7
 
 client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+deepseek_client = OpenAI(base_url=DEEPSEEK_BASE_URL, api_key=DEEPSEEK_API_KEY) if DEEPSEEK_API_KEY else None
 
 
 def _preload_model(model: str):
@@ -194,7 +203,32 @@ def _gemini_stream(prompt, system, temperature):
                         if part.get("text"):
                             yield {"content": part["text"]}
             return  # 정상 종료
-    yield {"error": f"모든 Gemini 키({nk}개)·모델({nm}개)의 사용량이 소진되었습니다."}
+    # 모든 (키, 모델) 조합 소진 → DeepSeek(NVIDIA NIM) 예비 모델로 전환
+    if deepseek_client:
+        print(f"[gemini/작성] 모든 키({nk}개)·모델({nm}개) 소진 → DeepSeek '{DEEPSEEK_MODEL}'로 전환")
+        yield from _deepseek_stream(prompt, system, temperature)
+        return
+    yield {"error": f"모든 Gemini 키({nk}개)·모델({nm}개)의 사용량이 소진되었습니다. (.env에 NVIDIA_NIM_API_KEY를 넣으면 DeepSeek로 자동 전환됩니다.)"}
+
+
+def _deepseek_stream(prompt, system, temperature):
+    """DeepSeek(NVIDIA NIM) 스트리밍 — 모든 Gemini 키·모델 소진 시 생기부 작성 예비용.
+    yield 형식은 _gemini_stream과 동일: {"content": "..."} 또는 {"error": "..."}"""
+    try:
+        stream = deepseek_client.chat.completions.create(
+            model=DEEPSEEK_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=temperature,
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield {"content": chunk.choices[0].delta.content}
+    except Exception as e:
+        yield {"error": f"DeepSeek 호출 실패: {e}"}
 
 
 @asynccontextmanager
@@ -418,4 +452,10 @@ if __name__ == "__main__":
 #               다음 키로 전환된다. (모델 회전이 안쪽, 키 회전이 바깥쪽)
 #               생기부 작성(/chat/stream)은 목록 정순(품질 높은 순), 주제 추출(/generate)은
 #               역순(가벼운 모델 먼저)으로 쓴다. 두 레인은 회전 커서를 따로 둔다.
+#
+# [DeepSeek 예비] 생기부 작성(/chat/stream, provider=gemini)에서 모든 Gemini 키·모델이
+#               소진되면 DeepSeek(NVIDIA NIM, OpenAI 호환)로 자동 전환해 이어서 작성한다.
+#               .env에 NVIDIA_NIM_API_KEY(aider와 동일한 키)를 넣으면 활성화되고,
+#               DEEPSEEK_MODEL / DEEPSEEK_BASE_URL 로 모델·주소를 바꿀 수 있다.
+#               주제 추출(/generate)은 폴백 없이 기존대로 Gemini만 쓴다.
 # ---------------------------------------------------------
