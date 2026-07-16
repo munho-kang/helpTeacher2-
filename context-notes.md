@@ -21,3 +21,26 @@
 - 서버 로그로 확인: 키 3개 × 가짜 모델 1개 회전(404) 후 `[gemini/작성] 모든 키(3개)·모델(1개) 소진 → DeepSeek 'deepseek-ai/deepseek-v4-pro'로 전환` 출력. 이어서 DeepSeek가 생기부 문체 본문을 SSE 34개 이벤트로 정상 스트리밍하고 `[DONE]`으로 종료. `<think>` 태그·잘림 없음 → `max_tokens`/`chat_template_kwargs` 추가 조치 불필요.
 - 주의: 백그라운드로 띄운 서버 로그를 볼 때는 `PYTHONUNBUFFERED=1`이 필요함. 없으면 print가 블록 버퍼링되어 강제 종료 시 유실됨(첫 테스트에서 로그가 안 보였던 원인).
 - 주제 추출(2차): 같은 방식으로 키 3개 회전(404) 후 `[gemini/추출] ... 소진 → DeepSeek 전환` 로그 확인. `response_format=json_object`로 호출해 `{"topics": [...]}` 형태의 유효한 JSON이 반환됨(json.loads 파싱 성공).
+
+# 컨텍스트 노트 — 문제 생성·공문 분석 Gemini 전환 (2026-07-16)
+
+## 배경에서 발견한 함정
+- `/generate`의 Gemini 분기는 `prompt`만 `_gemini_generate`에 넘기고 `files`를 아예 읽지 않았음. PDF 텍스트 추출은 Ollama 분기에만 있었음. 따라서 프론트에서 `provider: 'gemini'`만 붙이는 "1줄 변경"은 **에러 없이** PDF를 유실시켜, 문제 생성이 원문 없이 문제를 지어내는 결과가 됨. 서버 쪽 첨부 처리가 이 전환의 본체이고 프론트 변경은 부수적임.
+
+## PDF 전달 방식 — 텍스트 추출이 아닌 원본 전송
+- 선택지는 (1) Ollama 분기의 pypdf 추출 로직을 provider 분기 앞으로 올려 공용화, (2) PDF 원본을 base64 `inline_data`로 Gemini에 직접 전달. **(2) 채택**(사용자 결정).
+- 근거: Gemini는 PDF를 네이티브로 읽으므로 스캔 PDF·표·레이아웃까지 처리됨. pypdf 추출은 스캔 PDF에서 실패해 기존에 `"텍스트를 추출하지 못했습니다"` 400을 뱉던 한계가 있었는데, 이 경로에서는 그 제약이 사라짐.
+- 이미지도 같은 `inline_data`로 처리. 현재 프론트에서 `/generate`에 이미지를 보내는 호출부는 없지만, Gemini 분기가 이미지를 조용히 버리는 위 함정을 반복하지 않으려고 함께 처리함. 지원 외 형식은 Ollama 분기와 동일하게 400.
+
+## 모델 레인
+- 추출 레인(`GEMINI_MODELS_EXTRACT`, 가벼운 모델 먼저) 재사용 — 사용자 결정. 문제 생성·공문 분석이 주제 추출과 `_gemini_cursor["extract"]` 커서를 공유함. 별도 레인을 파려면 `_gemini_generate`에 레인 선택 인자를 추가해야 하는데, 그만한 이득이 확인되지 않아 보류.
+
+## DeepSeek 폴백의 구멍
+- DeepSeek(NIM)는 텍스트 전용이라 `inline_data`를 못 받음. 따라서 **첨부가 있는 요청은 Gemini 소진 시 폴백 없이 429**로 실패시킴. 조용히 첨부를 버린 채 DeepSeek에 넘기는 것보다 명시적 실패가 낫다고 판단(위 함정과 같은 종류의 버그가 되므로).
+- 텍스트 전용 요청(공문 분석의 텍스트 붙여넣기 경로 등)은 기존대로 DeepSeek 폴백이 살아 있음.
+
+## 검증 방법·결과 (2026-07-16)
+- 고유 문자열(`Zephyr Protocol 4471`, `Marinaris City`)을 넣은 최소 PDF를 손으로 만들어 첨부 → Gemini가 두 값을 정확히 반환. 프롬프트에 답이 없으므로 PDF가 실제로 모델까지 도달했다는 증거가 됨.
+- 회귀 확인: 텍스트 전용 추출(JSON 모드), 생기부 스트리밍(`/chat/stream`), 지원 외 형식 400 모두 정상.
+- 소진 경로는 2차 때와 같은 `GEMINI_MODELS=<가짜 모델명>` 기법으로 재현 — 첨부 있으면 429(폴백 불가 안내), 텍스트 전용은 DeepSeek 폴백 정상 동작.
+- 로컬 Ollama 분기(`provider=ollama`)는 코드를 건드리지 않았고, 이 세션에서 Ollama를 띄우지 않아 실행 검증은 하지 않음. `MODEL`/`VISION_MODEL` 상수와 lifespan preload는 그대로 남아 있음(`/chat` 엔드포인트가 계속 사용).

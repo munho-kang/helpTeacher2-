@@ -127,10 +127,13 @@ def _gemini_advance(cursor, models):
         cursor[0] = (cursor[0] + 1) % len(GEMINI_API_KEYS)
 
 
-def _gemini_body(prompt, system, temperature, json_mode=False):
+def _gemini_body(prompt, system, temperature, json_mode=False, file_parts=None):
+    parts = [{"text": prompt}]
+    if file_parts:
+        parts.extend(file_parts)
     body = {
         "system_instruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"temperature": temperature},
     }
     if json_mode:
@@ -138,13 +141,14 @@ def _gemini_body(prompt, system, temperature, json_mode=False):
     return body
 
 
-def _gemini_generate(prompt, system, temperature, json_mode):
-    """Google Gemini REST 호출(주제 추출용). 가벼운 모델부터(역순) 시도하고, 한 키의 모든
-    모델이 소진되면 다음 키로 전환한다."""
+def _gemini_generate(prompt, system, temperature, json_mode, file_parts=None):
+    """Google Gemini REST 호출(주제 추출·문제 생성·공문 분석용). 가벼운 모델부터(역순) 시도하고,
+    한 키의 모든 모델이 소진되면 다음 키로 전환한다.
+    file_parts는 PDF·이미지를 Gemini 네이티브로 넘기는 inline_data 파트 목록이다."""
     if not GEMINI_API_KEYS:
         raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
     models, cursor = GEMINI_MODELS_EXTRACT, _gemini_cursor["extract"]
-    body = _gemini_body(prompt, system, temperature, json_mode)
+    body = _gemini_body(prompt, system, temperature, json_mode, file_parts)
 
     nk, nm = len(GEMINI_API_KEYS), len(models)
     for _ in range(nk * nm):  # 모든 (키, 모델) 조합을 한 바퀴까지만 시도
@@ -162,9 +166,12 @@ def _gemini_generate(prompt, system, temperature, json_mode):
             continue
         raise HTTPException(status_code=502, detail=f"Gemini API 오류 {r.status_code}: {r.text[:300]}")
     # 모든 (키, 모델) 조합 소진 → DeepSeek(NVIDIA NIM) 예비 모델로 전환
-    if deepseek_client:
+    # 단 DeepSeek는 텍스트 전용이라 첨부 파일이 있는 요청은 넘길 수 없다.
+    if deepseek_client and not file_parts:
         print(f"[gemini/추출] 모든 키({nk}개)·모델({nm}개) 소진 → DeepSeek '{DEEPSEEK_MODEL}'로 전환")
         return _deepseek_generate(prompt, system, temperature, json_mode)
+    if file_parts:
+        raise HTTPException(status_code=429, detail=f"모든 Gemini 키({nk}개)·모델({nm}개)의 사용량이 소진되었습니다. 첨부 파일이 있는 요청은 DeepSeek 예비 모델로 넘길 수 없습니다(텍스트 전용). 잠시 후 다시 시도하거나 키를 추가하세요.")
     raise HTTPException(status_code=429, detail=f"모든 Gemini 키({nk}개)·모델({nm}개)의 사용량이 소진되었습니다. 잠시 후 다시 시도하거나 키를 추가하세요.")
 
 
@@ -313,13 +320,23 @@ async def generate(
     provider: str = Form("ollama"),
     files: list[UploadFile] = File(default=None),
 ):
-    # Gemini(클라우드)로 라우팅 — 긴 입력을 한 번에 처리(주제 추출용). 텍스트 전용.
+    # Gemini(클라우드)로 라우팅 — 긴 입력을 한 번에 처리(주제 추출·문제 생성·공문 분석용).
+    # PDF·이미지는 텍스트 추출 없이 원본을 그대로 넘긴다(스캔 PDF·표·레이아웃까지 Gemini가 직접 읽음).
     if provider == "gemini":
         if not GEMINI_API_KEYS:
             raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
+        file_parts = []
+        for f in files or []:
+            ctype = f.content_type or ""
+            if not (ctype.startswith("image/") or ctype == "application/pdf"):
+                raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 형식: {f.content_type}")
+            data = await f.read()
+            file_parts.append({
+                "inline_data": {"mime_type": ctype, "data": base64.b64encode(data).decode("utf-8")}
+            })
         try:
             content = await run_in_threadpool(
-                lambda: _gemini_generate(prompt, system, temperature, response_format == "json_object")
+                lambda: _gemini_generate(prompt, system, temperature, response_format == "json_object", file_parts)
             )
         except HTTPException:
             raise
@@ -467,7 +484,10 @@ if __name__ == "__main__":
 # - POST /generate      : multipart/form-data
 #                         prompt, system, response_format(text|json_object),
 #                         temperature, provider(ollama|gemini), files(이미지/PDF) → {"content":"..."}
-#                         이미지 첨부 시 VISION_MODEL, PDF는 텍스트 추출 후 텍스트 MODEL 사용
+#                         provider=gemini → 주제 추출·문제 생성·공문 분석. 첨부는 원본을 그대로
+#                                           Gemini에 전달(스캔 PDF·표도 처리). 단 첨부가 있으면
+#                                           소진 시 DeepSeek 폴백 불가(텍스트 전용).
+#                         provider=ollama → 이미지 첨부 시 VISION_MODEL, PDF는 텍스트 추출 후 MODEL
 # - POST /chat/stream   : 같은 입력 + provider(ollama|gemini), SSE로 토큰 단위 스트리밍
 #                         provider=gemini → 생기부 작성(텍스트 전용, 키 소진 시 자동 전환)
 #                         provider=ollama → 로컬 모델(이미지/PDF 첨부 가능)

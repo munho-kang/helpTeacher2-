@@ -571,7 +571,8 @@ async function checkLLMServer() {
   } catch { return false; }
 }
 
-async function callLLM({ prompt, system, files, jsonMode = false, temperature = 0.7, provider }) {
+// 문제 생성·공문 분석·주제 추출은 Gemini로 보낸다. PDF·이미지는 서버가 원본 그대로 Gemini에 넘긴다.
+async function callLLM({ prompt, system, files, jsonMode = false, temperature = 0.7, provider = 'gemini' }) {
   const fd = new FormData();
   fd.append('prompt', prompt);
   if (system != null) fd.append('system', system);
