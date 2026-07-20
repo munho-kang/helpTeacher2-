@@ -44,3 +44,45 @@
 - 회귀 확인: 텍스트 전용 추출(JSON 모드), 생기부 스트리밍(`/chat/stream`), 지원 외 형식 400 모두 정상.
 - 소진 경로는 2차 때와 같은 `GEMINI_MODELS=<가짜 모델명>` 기법으로 재현 — 첨부 있으면 429(폴백 불가 안내), 텍스트 전용은 DeepSeek 폴백 정상 동작.
 - 로컬 Ollama 분기(`provider=ollama`)는 코드를 건드리지 않았고, 이 세션에서 Ollama를 띄우지 않아 실행 검증은 하지 않음. `MODEL`/`VISION_MODEL` 상수와 lifespan preload는 그대로 남아 있음(`/chat` 엔드포인트가 계속 사용).
+
+# 컨텍스트 노트 — qwen(로컬 Ollama) 경로 완전 제거 (2026-07-20)
+
+## 배경
+- 2026-07-16 전환 이후 프론트의 모든 LLM 호출이 Gemini로 감. `callLLM`(index.html:575)과
+  `callLLMStream`(598)의 provider 기본값이 둘 다 `'gemini'`이고, 호출부 7곳 중 `'ollama'`를
+  넘기는 곳이 하나도 없음(1232행은 오히려 `'gemini'`를 명시). 즉 qwen 경로는 이미 도달 불가 코드였음.
+- 실질적 영향은 부팅 시 `_preload_model`이 35b 모델을 VRAM에 올리고 `keep_alive=-1`로 계속
+  붙잡고 있었다는 점. qwen을 안 쓰기로 한 이상 순수 낭비임.
+
+## 제거 범위 — "상수 두 줄"이 아니라 경로 전체
+- qwen 상수만 지우면 `/chat`과 두 엔드포인트의 ollama 분기가 깨짐. 그래서 Ollama 경로 전체가
+  함께 죽는 것이 맞음. 연쇄로 `asyncio`·`asynccontextmanager`(lifespan 전용),
+  `BaseModel`(`ChatRequest` 전용), `PdfReader`·`BytesIO`가 전부 고아가 됨.
+- `pypdf` 의존성이 통째로 빠지는 이유는 PDF 텍스트 추출(358, 435행)이 **ollama 분기에만**
+  있었기 때문. Gemini는 PDF 원본을 `inline_data`로 네이티브 처리하므로 기능 손실이 아니라
+  오히려 스캔 PDF까지 커버됨(2026-07-16 노트 참고).
+
+## `POST /chat` 삭제 — 사용자 결정
+- 선택지는 (1) 삭제, (2) 내부를 `_gemini_generate`로 바꿔 재구현, (3) provider 파라미터만 유지.
+  **(1) 채택**(사용자 결정).
+- 근거는 두 가지. `/chat`은 provider 분기 자체가 없어 `MODEL` 전용이고, 프론트에서 호출하는
+  곳이 없음(fetch 대상은 `/`, `/generate`, `/chat/stream` 셋뿐). 비스트리밍 텍스트는 이미
+  `/generate`가 Gemini로 처리하므로 (2)는 아무도 안 쓰는 코드를 새로 쓰는 셈이 됨.
+
+## provider 파라미터 제거
+- 값이 `gemini` 하나뿐인 분기는 죽은 추상화라서 서버·프론트 양쪽에서 없앰. 나중에 다른
+  provider가 필요해지면 그때 다시 넣는 편이 낫다고 판단.
+
+## `/chat/stream`의 `files` 파라미터도 제거
+- Gemini 분기(412-421행)는 `files`를 아예 읽지 않음. ollama 분기를 빼면 `files`는 **첨부를
+  조용히 버리는 파라미터**가 되는데, 이건 2026-07-16 노트에 기록된 바로 그 함정과 같은 종류임.
+- 프론트 `callLLMStream`은 애초에 `files` 인자를 받지도 않으므로 제거해도 호출부 영향 없음.
+
+## `GET /` 응답 변경이 안전한 근거
+- 현재 `{"status","model","vision_model"}`을 반환하지만, 유일한 소비자인
+  `checkLLMServer()`(index.html:566-570)가 `r.ok`만 보고 본문을 읽지 않음. 따라서
+  `{"status": "ok"}`로 줄여도 프론트 영향 없음.
+
+## 건드리지 않는 것
+- Gemini 키·모델 회전(`_gemini_*`)과 DeepSeek 폴백(`_deepseek_*`) 로직 전부. 이번 작업은
+  순수 제거이고 남은 경로의 동작은 바뀌지 않아야 함.

@@ -31,3 +31,48 @@ Gemini의 모든 키·모델 사용량 소진 시 생기부 작성을 DeepSeek(N
 - [x] 회귀: 텍스트 전용 추출·생기부 스트리밍·잘못된 형식 거부 확인
 - [x] 소진 경로 재현: 첨부 있으면 429, 텍스트 전용은 DeepSeek 폴백 정상
 - [x] 문서 주석 갱신·커밋
+
+# qwen(로컬 Ollama) 경로 완전 제거 (2026-07-20)
+
+qwen을 앞으로 쓰지 않기로 결정. Ollama 경로를 전부 걷어내고 `Gemini(키×모델 회전) → DeepSeek 폴백`
+단일 체인만 남긴다. **Gemini·DeepSeek 로직은 한 줄도 건드리지 않는다.**
+
+## server.py — 삭제
+
+- [ ] 18-23행: Ollama 주소 주석, `OLLAMA_HOST`, `OLLAMA_BASE_URL`
+- [ ] 43-46행: `MODEL`(qwen3.6:35b), `VISION_MODEL`(qwen3-vl:4b)
+- [ ] 91행: `client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")`
+- [ ] 95-106행: `_preload_model()`
+- [ ] 267-271행: `lifespan()` 제거 → `app = FastAPI(title="Local AI Server")`
+- [ ] 284-292행: `ChatRequest`, `build_messages()`
+- [ ] 300-311행: `POST /chat` 엔드포인트 (Gemini 분기가 없고 프론트도 호출 안 함)
+- [ ] 347-400행: `/generate`의 ollama 분기 → Gemini 전용으로 평탄화, `provider` 파라미터 제거
+- [ ] 423-472행: `/chat/stream`의 ollama 분기 → Gemini 전용, `provider`·`files` 파라미터 제거
+- [ ] 고아 import 제거: `asyncio`, `asynccontextmanager`, `BaseModel`, `PdfReader`, `BytesIO`
+
+## server.py — 수정
+
+- [ ] `GET /` 응답을 `{"status": "ok"}`로 (프론트는 `r.ok`만 확인 — index.html:566-570에서 확인함)
+- [ ] 하단 문서 주석 블록(480-508행)을 남은 엔드포인트 기준으로 갱신
+
+## index.html — 서버 변경으로 생긴 고아만 정리
+
+- [ ] `callLLM`(575행)·`callLLMStream`(598행) 시그니처에서 `provider` 인자 제거
+- [ ] `fd.append('provider', ...)` 제거 (581, 603행)
+- [ ] 1232행의 `provider: 'gemini'` 제거
+- [ ] 호출부 7곳(879, 1227, 1297, 1418, 2049, 2337, 2343)의 나머지 인자는 손대지 않음
+
+## requirements.txt
+
+- [ ] `pypdf` 제거 (PDF 텍스트 추출은 ollama 분기 전용이었음)
+- [ ] 1행 주석에서 "Ollama 프록시" 표현 갱신
+
+## 검증 — Ollama를 띄우지 않은 상태에서
+
+- [ ] `python -c "import server"` — import 오류 없음
+- [ ] 서버 기동 성공 (preload 없이 즉시 뜸)
+- [ ] `GET /` → 200
+- [ ] `/generate` 텍스트 + `response_format=json_object` → 유효 JSON
+- [ ] `/generate` PDF 첨부 → 고유 문자열 회수 (2026-07-16과 같은 기법)
+- [ ] `/chat/stream` → SSE 정상 + `[DONE]` 종료
+- [ ] 커밋 (단일 논리 변경)
