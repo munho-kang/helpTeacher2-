@@ -572,13 +572,12 @@ async function checkLLMServer() {
 }
 
 // 문제 생성·공문 분석·주제 추출은 Gemini로 보낸다. PDF·이미지는 서버가 원본 그대로 Gemini에 넘긴다.
-async function callLLM({ prompt, system, files, jsonMode = false, temperature = 0.7, provider = 'gemini' }) {
+async function callLLM({ prompt, system, files, jsonMode = false, temperature = 0.7 }) {
   const fd = new FormData();
   fd.append('prompt', prompt);
   if (system != null) fd.append('system', system);
   fd.append('response_format', jsonMode ? 'json_object' : 'text');
   fd.append('temperature', String(temperature));
-  if (provider != null) fd.append('provider', provider);
   if (files) {
     for (const { name, blob, type } of files) {
       const b = blob instanceof Blob ? blob : new Blob([blob], { type });
@@ -595,12 +594,11 @@ async function callLLM({ prompt, system, files, jsonMode = false, temperature = 
 }
 
 // 생기부 작성(행동특성·세특·세특 줄이기)은 Gemini로 스트리밍한다. 키 소진 시 서버가 다음 키로 전환.
-async function callLLMStream({ prompt, system, temperature = 0.7, onToken, provider = 'gemini' }) {
+async function callLLMStream({ prompt, system, temperature = 0.7, onToken }) {
   const fd = new FormData();
   fd.append('message', prompt);
   if (system != null) fd.append('system', system);
   fd.append('temperature', String(temperature));
-  fd.append('provider', provider);
 
   const r = await fetch(`${LLM_URL}/chat/stream`, { method: 'POST', body: fd });
   if (!r.ok) {
@@ -1229,7 +1227,6 @@ $('#tseboo-extract').addEventListener('click', async () => {
         system: TOPIC_EXTRACT_PROMPT,
         jsonMode: true,
         temperature: 0.3,
-        provider: 'gemini',
       });
       for (const t of parseTopicsRaw(raw)) {
         const key = t.toLowerCase();

@@ -1,9 +1,6 @@
 import os
 import json
 import base64
-import asyncio
-from io import BytesIO
-from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
@@ -12,16 +9,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
-from pydantic import BaseModel
-from pypdf import PdfReader
-
-# ---------------------------------------------------------
-# [Ollama 서버 주소] 본체에서 실행 중인 Ollama를 가리킵니다.
-# ipconfig getifaddr en0
-# ---------------------------------------------------------
-OLLAMA_HOST = "http://localhost:11434"
-OLLAMA_BASE_URL = f"{OLLAMA_HOST}/v1"
-
 
 # .env 파일이 있으면 환경변수로 읽어들인다 (python-dotenv 없이 동작, git에는 .env 미포함).
 def _load_dotenv():
@@ -40,10 +27,6 @@ def _load_dotenv():
 _load_dotenv()
 
 
-# 텍스트 전용 모델 (생활기록부 등)
-MODEL = "qwen3.6:35b"
-# 이미지/PDF 입력용 비전 모델 (`ollama list`에 보이는 이름으로 맞출 것)
-VISION_MODEL = "qwen3-vl:4b"
 # Gemini(클라우드) — 생기부 작성·주제 추출 등. 키는 환경변수로 주입.
 # 여러 개의 키를 넣으면 한 키의 사용량이 소진(HTTP 429)될 때 다음 키로 자동 전환한다.
 #   .env 예) GEMINI_API_KEYS="키1,키2,키3"   (단일 GEMINI_API_KEY도 계속 지원)
@@ -88,22 +71,7 @@ DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-ai/deepseek-v4-p
 SYSTEM_PROMPT = "당신은 명확하고 통찰력 있는 답변을 제공하는 전문적인 AI 어시스턴트입니다."
 TEMPERATURE = 0.7
 
-client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
 deepseek_client = OpenAI(base_url=DEEPSEEK_BASE_URL, api_key=DEEPSEEK_API_KEY) if DEEPSEEK_API_KEY else None
-
-
-def _preload_model(model: str):
-    """빈 프롬프트로 모델만 메모리에 적재한다. keep_alive=-1 로 내려가지 않게 고정."""
-    try:
-        r = httpx.post(
-            f"{OLLAMA_HOST}/api/generate",
-            json={"model": model, "keep_alive": -1},
-            timeout=600,
-        )
-        r.raise_for_status()
-        print(f"[preload] '{model}' 메모리 적재 완료")
-    except Exception as e:
-        print(f"[preload] '{model}' 적재 실패: {e}")
 
 
 def _gemini_should_rotate(status, text):
@@ -264,14 +232,7 @@ def _deepseek_generate(prompt, system, temperature, json_mode=False):
     return content
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 서버가 뜨자마자 텍스트 모델을 백그라운드로 미리 적재 → 첫 요청 콜드스타트 제거
-    app.state.preload_task = asyncio.create_task(run_in_threadpool(_preload_model, MODEL))
-    yield
-
-
-app = FastAPI(title="Local AI Server", lifespan=lifespan)
+app = FastAPI(title="Local AI Server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -281,34 +242,9 @@ app.add_middleware(
 )
 
 
-class ChatRequest(BaseModel):
-    message: str
-
-
-def build_messages(user_message: str):
-    return [
-         {"role": "system", "content": SYSTEM_PROMPT},
-         {"role": "user", "content": user_message},
-     ]
-
-
 @app.get("/")
 def root():
-    return {"status": "ok", "model": MODEL, "vision_model": VISION_MODEL}
-
-
-@app.post("/chat")
-def chat(req: ChatRequest):
-    try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=build_messages(req.message),
-            temperature=TEMPERATURE,
-         )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Ollama 호출 실패: {e}")
-
-    return {"reply": response.choices[0].message.content}
+    return {"status": "ok"}
 
 
 @app.post("/generate")
@@ -317,87 +253,30 @@ async def generate(
     system: str = Form(SYSTEM_PROMPT),
     response_format: str = Form("text"),
     temperature: float = Form(TEMPERATURE),
-    provider: str = Form("ollama"),
     files: list[UploadFile] = File(default=None),
 ):
-    # Gemini(클라우드)로 라우팅 — 긴 입력을 한 번에 처리(주제 추출·문제 생성·공문 분석용).
+    # Gemini(클라우드)로 긴 입력을 한 번에 처리(주제 추출·문제 생성·공문 분석용).
     # PDF·이미지는 텍스트 추출 없이 원본을 그대로 넘긴다(스캔 PDF·표·레이아웃까지 Gemini가 직접 읽음).
-    if provider == "gemini":
-        if not GEMINI_API_KEYS:
-            raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
-        file_parts = []
-        for f in files or []:
-            ctype = f.content_type or ""
-            if not (ctype.startswith("image/") or ctype == "application/pdf"):
-                raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 형식: {f.content_type}")
-            data = await f.read()
-            file_parts.append({
-                "inline_data": {"mime_type": ctype, "data": base64.b64encode(data).decode("utf-8")}
-            })
-        try:
-            content = await run_in_threadpool(
-                lambda: _gemini_generate(prompt, system, temperature, response_format == "json_object", file_parts)
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Gemini 호출 실패: {e}")
-        return {"content": content}
-
-    # 첨부 파일 정규화: 이미지 → data URL(비전 모델), PDF → 텍스트 추출 후 프롬프트에 첨부(텍스트 모델)
-    image_urls = []
-
-    if files:
-        for f in files:
-            content = await f.read()
-            if f.content_type and f.content_type.startswith("image/"):
-                b64 = base64.b64encode(content).decode("utf-8")
-                image_urls.append(f"data:{f.content_type};base64,{b64}")
-            elif f.content_type == "application/pdf":
-                try:
-                    reader = PdfReader(BytesIO(content))
-                    pdf_text = "\n".join((p.extract_text() or "") for p in reader.pages)
-                except Exception as e:
-                    raise HTTPException(status_code=400, detail=f"PDF 텍스트 추출 실패: {e}")
-                if len(pdf_text.strip()) < 20:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"'{f.filename}'에서 텍스트를 추출하지 못했습니다. 스캔 이미지로 된 PDF일 수 있습니다. 텍스트가 포함된 PDF를 사용하거나 내용을 직접 입력해주세요.",
-                    )
-                prompt += f"\n[첨부된 PDF 파일: {f.filename}]\n{pdf_text}"
-            else:
-                raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 형식: {f.content_type}")
-
-    if image_urls:
-        user_content = [{"type": "text", "text": prompt}]
-        for url in image_urls:
-            user_content.append({"type": "image_url", "image_url": {"url": url}})
-        model = VISION_MODEL
-    else:
-        user_content = prompt
-        model = MODEL
-
-    kwargs = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_content},
-        ],
-        "temperature": temperature,
-    }
-    if response_format == "json_object":
-        kwargs["response_format"] = {"type": "json_object"}
-
-    # 동기 OpenAI 호출을 스레드풀로 보내 이벤트 루프를 비워 둠
-    # (그래야 /generate 처리 중에도 다른 요청, 예: 헬스체크가 즉시 응답됨)
+    if not GEMINI_API_KEYS:
+        raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
+    file_parts = []
+    for f in files or []:
+        ctype = f.content_type or ""
+        if not (ctype.startswith("image/") or ctype == "application/pdf"):
+            raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 형식: {f.content_type}")
+        data = await f.read()
+        file_parts.append({
+            "inline_data": {"mime_type": ctype, "data": base64.b64encode(data).decode("utf-8")}
+        })
     try:
-        response = await run_in_threadpool(
-            lambda: client.chat.completions.create(**kwargs)
+        content = await run_in_threadpool(
+            lambda: _gemini_generate(prompt, system, temperature, response_format == "json_object", file_parts)
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Ollama 호출 실패: {e}")
-
-    return {"content": response.choices[0].message.content}
+        raise HTTPException(status_code=502, detail=f"Gemini 호출 실패: {e}")
+    return {"content": content}
 
 
 @app.post("/chat/stream")
@@ -405,71 +284,17 @@ async def chat_stream(
     message: str = Form(...),
     system: str = Form(SYSTEM_PROMPT),
     temperature: float = Form(TEMPERATURE),
-    provider: str = Form("ollama"),
-    files: list[UploadFile] = File(default=None),
 ):
-    # Gemini(클라우드)로 라우팅 — 생기부 작성용. 텍스트 전용, 키 소진 시 다음 키로 전환.
-    if provider == "gemini":
-        if not GEMINI_API_KEYS:
-            raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
+    # Gemini(클라우드) 스트리밍 — 생기부 작성용. 텍스트 전용, 키 소진 시 다음 키로 전환.
+    if not GEMINI_API_KEYS:
+        raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
 
-        def gen_gemini():
-            for evt in _gemini_stream(message, system, temperature):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
+    def gen_gemini():
+        for evt in _gemini_stream(message, system, temperature):
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
 
-        return StreamingResponse(gen_gemini(), media_type="text/event-stream")
-
-    # 이미지 파일은 base64로 변환하여 Ollama에 전달
-    image_urls = []
-    if files:
-        for f in files:
-            ctype = f.content_type or ''
-            if ctype.startswith('image/'):
-                content = await f.read()
-                b64_str = base64.b64encode(content).decode('utf-8')
-                image_urls.append(f"data:{ctype};base64,{b64_str}")
-            elif ctype == 'application/pdf':
-                content = await f.read()
-                try:
-                    reader = PdfReader(BytesIO(content))
-                    pdf_text = "\n".join((p.extract_text() or "") for p in reader.pages)
-                except Exception as e:
-                    raise HTTPException(status_code=400, detail=f"PDF 텍스트 추출 실패: {e}")
-                if len(pdf_text.strip()) < 20:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"'{f.filename}'에서 텍스트를 추출하지 못했습니다. 스캔 이미지로 된 PDF일 수 있습니다. 텍스트가 포함된 PDF를 사용하거나 내용을 직접 입력해주세요.",
-                    )
-                message += f"\n[첨부된 PDF 파일: {f.filename}]\n{pdf_text}"
-
-    if image_urls:
-        user_content = [{"type": "text", "text": message}]
-        for url in image_urls:
-            user_content.append({"type": "image_url", "image_url": {"url": url}})
-    else:
-        user_content = message
-
-    def generate():
-        try:
-            stream = client.chat.completions.create(
-                model=VISION_MODEL if image_urls else MODEL,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_content}
-                ],
-                stream=True,
-                temperature=temperature,
-             )
-            for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content is not None:
-                    yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(gen_gemini(), media_type="text/event-stream")
 
 
 if __name__ == "__main__":
@@ -479,18 +304,15 @@ if __name__ == "__main__":
 
 # ---------------------------------------------------------
 # [엔드포인트]
-# - GET   /              : 헬스체크 ({"status":"ok","model":"...","vision_model":"..."})
-# - POST /chat          : {"message":"안녕"} → {"reply":"..."} (완성된 응답 JSON)
+# - GET   /              : 헬스체크 ({"status":"ok"})
 # - POST /generate      : multipart/form-data
 #                         prompt, system, response_format(text|json_object),
-#                         temperature, provider(ollama|gemini), files(이미지/PDF) → {"content":"..."}
-#                         provider=gemini → 주제 추출·문제 생성·공문 분석. 첨부는 원본을 그대로
-#                                           Gemini에 전달(스캔 PDF·표도 처리). 단 첨부가 있으면
-#                                           소진 시 DeepSeek 폴백 불가(텍스트 전용).
-#                         provider=ollama → 이미지 첨부 시 VISION_MODEL, PDF는 텍스트 추출 후 MODEL
-# - POST /chat/stream   : 같은 입력 + provider(ollama|gemini), SSE로 토큰 단위 스트리밍
-#                         provider=gemini → 생기부 작성(텍스트 전용, 키 소진 시 자동 전환)
-#                         provider=ollama → 로컬 모델(이미지/PDF 첨부 가능)
+#                         temperature, files(이미지/PDF) → {"content":"..."}
+#                         주제 추출·문제 생성·공문 분석용. 첨부는 원본을 그대로 Gemini에
+#                         전달(스캔 PDF·표도 처리). 단 첨부가 있으면 소진 시 DeepSeek 폴백
+#                         불가(텍스트 전용).
+# - POST /chat/stream   : message, system, temperature → SSE로 토큰 단위 스트리밍
+#                         생기부 작성용(텍스트 전용, 키 소진 시 자동 전환)
 # - GET   /docs          : Swagger UI
 #
 # [Gemini 회전] .env에 GEMINI_API_KEYS="키1,키2,키3", GEMINI_MODELS="모델1,모델2,모델3"를 넣으면
@@ -499,9 +321,9 @@ if __name__ == "__main__":
 #               생기부 작성(/chat/stream)은 목록 정순(품질 높은 순), 주제 추출(/generate)은
 #               역순(가벼운 모델 먼저)으로 쓴다. 두 레인은 회전 커서를 따로 둔다.
 #
-# [DeepSeek 예비] 생기부 작성(/chat/stream, provider=gemini)에서 모든 Gemini 키·모델이
-#               소진되면 DeepSeek(NVIDIA NIM, OpenAI 호환)로 자동 전환해 이어서 작성한다.
+# [DeepSeek 예비] 생기부 작성(/chat/stream)에서 모든 Gemini 키·모델이 소진되면
+#               DeepSeek(NVIDIA NIM, OpenAI 호환)로 자동 전환해 이어서 작성한다.
 #               .env에 NVIDIA_NIM_API_KEY(aider와 동일한 키)를 넣으면 활성화되고,
 #               DEEPSEEK_MODEL / DEEPSEEK_BASE_URL 로 모델·주소를 바꿀 수 있다.
-#               주제 추출(/generate, provider=gemini)도 같은 방식으로 소진 시 전환된다.
+#               주제 추출(/generate)도 같은 방식으로 소진 시 전환된다.
 # ---------------------------------------------------------

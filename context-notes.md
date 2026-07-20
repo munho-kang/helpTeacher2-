@@ -86,3 +86,13 @@
 ## 건드리지 않는 것
 - Gemini 키·모델 회전(`_gemini_*`)과 DeepSeek 폴백(`_deepseek_*`) 로직 전부. 이번 작업은
   순수 제거이고 남은 경로의 동작은 바뀌지 않아야 함.
+
+## 검증 결과 (2026-07-20)
+- 검증 시작 시점에 Ollama가 brew 서비스(`homebrew.mxcl.ollama`)로 떠 있었음. "Ollama 없이
+  검증" 조건을 맞추기 위해 `brew services stop ollama`로 내리고(포트 11434 연결 거부 확인),
+  검증 종료 후 `brew services start ollama`로 원상복구함.
+- Ollama 미기동 상태에서 전 항목 통과. import OK, preload 없이 즉시 기동, `GET /` 200,
+  `/generate` JSON 모드에서 유효 JSON, PDF 첨부에서 고유 문자열(`Quillon Directive 8253`,
+  `Veymar Harbor`) 정확 회수, `/chat/stream` SSE 3개 content 이벤트 + `[DONE]` 종료.
+- PDF 프로브는 pypdf 제거로 인해 xref 오프셋까지 손으로 계산하는 생성 스크립트로 만듦
+  (2026-07-16과 같은 기법, 의존성 없음).
