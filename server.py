@@ -7,7 +7,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from openai import OpenAI
 
 # .env 파일이 있으면 환경변수로 읽어들인다 (python-dotenv 없이 동작, git에는 .env 미포함).
@@ -242,9 +242,13 @@ app.add_middleware(
 )
 
 
+INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+
+
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    # 프론트(index.html)를 같은 서버에서 서빙한다. 프론트는 상대경로로 API를 호출.
+    return FileResponse(INDEX_PATH)
 
 
 @app.post("/generate")
@@ -304,7 +308,7 @@ if __name__ == "__main__":
 
 # ---------------------------------------------------------
 # [엔드포인트]
-# - GET   /              : 헬스체크 ({"status":"ok"})
+# - GET   /              : 프론트(index.html) 서빙 — 프론트는 상대경로로 API를 호출한다
 # - POST /generate      : multipart/form-data
 #                         prompt, system, response_format(text|json_object),
 #                         temperature, files(이미지/PDF) → {"content":"..."}
