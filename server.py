@@ -4,7 +4,7 @@ import base64
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Form
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -72,6 +72,15 @@ SYSTEM_PROMPT = "당신은 명확하고 통찰력 있는 답변을 제공하는 
 TEMPERATURE = 0.7
 
 deepseek_client = OpenAI(base_url=DEEPSEEK_BASE_URL, api_key=DEEPSEEK_API_KEY) if DEEPSEEK_API_KEY else None
+
+# 접속 암호 — .env에 ACCESS_CODE를 설정하면 /generate·/chat/stream 요청의 X-Access-Code
+# 헤더를 검사한다(불일치 시 401). 설정하지 않으면 검사하지 않는다(로컬 개발용).
+ACCESS_CODE = (os.environ.get("ACCESS_CODE") or "").strip()
+
+
+def _check_access(code):
+    if ACCESS_CODE and (code or "").strip() != ACCESS_CODE:
+        raise HTTPException(status_code=401, detail="접속 암호가 올바르지 않습니다.")
 
 
 def _gemini_should_rotate(status, text):
@@ -258,9 +267,11 @@ async def generate(
     response_format: str = Form("text"),
     temperature: float = Form(TEMPERATURE),
     files: list[UploadFile] = File(default=None),
+    x_access_code: str = Header(default=""),
 ):
     # Gemini(클라우드)로 긴 입력을 한 번에 처리(주제 추출·문제 생성·공문 분석용).
     # PDF·이미지는 텍스트 추출 없이 원본을 그대로 넘긴다(스캔 PDF·표·레이아웃까지 Gemini가 직접 읽음).
+    _check_access(x_access_code)
     if not GEMINI_API_KEYS:
         raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
     file_parts = []
@@ -288,8 +299,10 @@ async def chat_stream(
     message: str = Form(...),
     system: str = Form(SYSTEM_PROMPT),
     temperature: float = Form(TEMPERATURE),
+    x_access_code: str = Header(default=""),
 ):
     # Gemini(클라우드) 스트리밍 — 생기부 작성용. 텍스트 전용, 키 소진 시 다음 키로 전환.
+    _check_access(x_access_code)
     if not GEMINI_API_KEYS:
         raise HTTPException(status_code=400, detail="서버에 Gemini API 키가 없습니다(.env의 GEMINI_API_KEYS 확인).")
 
@@ -330,4 +343,8 @@ if __name__ == "__main__":
 #               .env에 NVIDIA_NIM_API_KEY(aider와 동일한 키)를 넣으면 활성화되고,
 #               DEEPSEEK_MODEL / DEEPSEEK_BASE_URL 로 모델·주소를 바꿀 수 있다.
 #               주제 추출(/generate)도 같은 방식으로 소진 시 전환된다.
+#
+# [접속 암호] .env에 ACCESS_CODE를 설정하면 /generate·/chat/stream이 X-Access-Code 헤더를
+#               검사한다(불일치 401). 미설정 시 검사 없음(로컬 개발용). 프론트는 401을 받으면
+#               암호를 물어 localStorage에 저장하고 같은 요청을 1회 재시도한다.
 # ---------------------------------------------------------

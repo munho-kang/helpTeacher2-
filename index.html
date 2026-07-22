@@ -501,6 +501,17 @@
    ───────────────────────────────────────────── */
 const LLM_URL = localStorage.getItem('llm_url') || '';
 
+// 접속 암호 — 서버(.env의 ACCESS_CODE)가 401을 주면 물어보고 저장한 뒤 같은 요청을 1회 재시도한다.
+let ACCESS_CODE = localStorage.getItem('access_code') || '';
+
+function askAccessCode() {
+  const v = prompt(ACCESS_CODE ? '접속 암호가 올바르지 않습니다. 다시 입력하세요.' : '접속 암호를 입력하세요.');
+  if (v == null) return false;
+  ACCESS_CODE = v.trim();
+  localStorage.setItem('access_code', ACCESS_CODE);
+  return true;
+}
+
 // pdf.js worker
 if (window.pdfjsLib) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -584,7 +595,10 @@ async function callLLM({ prompt, system, files, jsonMode = false, temperature = 
       fd.append('files', b, name);
     }
   }
-  const r = await fetch(`${LLM_URL}/generate`, { method: 'POST', body: fd });
+  let r = await fetch(`${LLM_URL}/generate`, { method: 'POST', body: fd, headers: { 'X-Access-Code': ACCESS_CODE } });
+  if (r.status === 401 && askAccessCode()) {
+    r = await fetch(`${LLM_URL}/generate`, { method: 'POST', body: fd, headers: { 'X-Access-Code': ACCESS_CODE } });
+  }
   if (!r.ok) {
     let detail = '';
     try { detail = (await r.json()).detail || ''; } catch {}
@@ -600,7 +614,10 @@ async function callLLMStream({ prompt, system, temperature = 0.7, onToken }) {
   if (system != null) fd.append('system', system);
   fd.append('temperature', String(temperature));
 
-  const r = await fetch(`${LLM_URL}/chat/stream`, { method: 'POST', body: fd });
+  let r = await fetch(`${LLM_URL}/chat/stream`, { method: 'POST', body: fd, headers: { 'X-Access-Code': ACCESS_CODE } });
+  if (r.status === 401 && askAccessCode()) {
+    r = await fetch(`${LLM_URL}/chat/stream`, { method: 'POST', body: fd, headers: { 'X-Access-Code': ACCESS_CODE } });
+  }
   if (!r.ok) {
     let detail = '';
     try { detail = (await r.json()).detail || ''; } catch {}
