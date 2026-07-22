@@ -76,3 +76,39 @@ qwen을 앞으로 쓰지 않기로 결정. Ollama 경로를 전부 걷어내고 
 - [x] `/generate` PDF 첨부 → 고유 문자열 회수 (2026-07-16과 같은 기법)
 - [x] `/chat/stream` → SSE 정상 + `[DONE]` 종료
 - [x] 커밋 (단일 논리 변경)
+
+# AWS EC2 배포 준비 (2026-07-22)
+
+EC2 t3.micro(서울)에 systemd로 포트 80 상시 구동, 접속 암호로 API 보호. B안(EC2)·무료 우선·
+암호 추가 모두 사용자 선택. 콘솔 절차는 코드가 아니라 `aws-ec2-배포-가이드.html`에 기록한다.
+
+## server.py — 같은 주소로 프론트 서빙
+
+- [x] `GET /`가 index.html을 반환 (FileResponse, 프론트는 `r.ok`만 확인하므로 영향 없음)
+- [x] 하단 문서 주석 갱신
+
+## index.html — 서버 주소 상대경로화
+
+- [x] `LLM_URL` 기본값을 `''`로 (페이지를 서빙한 서버로 호출, localStorage 오버라이드 유지)
+
+## 접속 암호 (server.py + index.html)
+
+- [x] server.py: `ACCESS_CODE` 환경변수 — 설정 시 `/generate`·`/chat/stream`의
+      `X-Access-Code` 헤더 검사, 불일치 401. 미설정이면 검사 없음(로컬 개발 동일)
+- [x] index.html: `callLLM`·`callLLMStream`이 헤더를 부착하고, 401이면 암호 입력→저장
+      (localStorage)→같은 요청 1회 재시도
+
+## 검증 — 로컬에서
+
+- [x] `python -c "import server"` — import 오류 없음
+- [x] ACCESS_CODE 미설정: `GET /` → index.html, `/generate` 정상, `/chat/stream` SSE 정상
+- [x] ACCESS_CODE 설정: 헤더 없음/오답 → 401, 정답 → 200 (두 엔드포인트 모두)
+      (주의: 첫 시도 때 이전 무암호 서버가 포트를 점유해 401이 안 나왔음 — 구 프로세스를
+      pkill로 내리고 재검증하여 전 항목 통과)
+- [x] 커밋 (같은 주소 서빙 / 접속 암호, 논리 단위 2개)
+
+## 배포 가이드
+
+- [x] `aws-ec2-배포-가이드.html` 작성 (가입→EC2 생성→탄력적 IP→업로드→systemd→접속→운영·
+      문제 해결→부록: DuckDNS+Caddy HTTPS, 리소스 정리)
+- [x] 문서 커밋

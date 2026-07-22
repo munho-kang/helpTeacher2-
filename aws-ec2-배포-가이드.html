@@ -1,0 +1,523 @@
+<!-- AWS EC2에 help_v2(교무업무 지원 도구)를 배포하는 전체 절차를 안내하는 문서 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS EC2 배포 가이드 — 교무업무 지원 도구</title>
+<style>
+  :root {
+    --ink: #1f2430; --sub: #5a6472; --line: #e3e7ee; --bg: #ffffff;
+    --panel: #f6f8fb; --code-bg: #22272e; --code-ink: #d8dee7;
+    --accent: #2456c8; --warn-bg: #fff4e5; --warn-line: #f0b862;
+    --danger-bg: #fdeceb; --danger-line: #e5847c; --tip-bg: #eaf6ee; --tip-line: #7cc492;
+    --ph: #ff7b72;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    line-height: 1.75; font-size: 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 120px; }
+  h1 { font-size: 30px; line-height: 1.3; margin: 0 0 8px; }
+  .subtitle { color: var(--sub); margin: 0 0 28px; }
+  h2 {
+    font-size: 22px; margin: 56px 0 14px; padding-top: 18px;
+    border-top: 2px solid var(--ink);
+  }
+  h2 .stepnum { color: var(--accent); margin-right: 8px; }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  p { margin: 10px 0; }
+  ol, ul { padding-left: 24px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  .toc { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; }
+  .toc ol { margin: 6px 0 0; }
+  .box { border-radius: 10px; padding: 14px 18px; margin: 16px 0; border: 1px solid; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); }
+  .danger { background: var(--danger-bg); border-color: var(--danger-line); }
+  .tip { background: var(--tip-bg); border-color: var(--tip-line); }
+  .box b:first-child { display: block; margin-bottom: 4px; }
+  .codeblock { position: relative; margin: 14px 0; }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.6;
+    font-family: "SF Mono", Menlo, Consolas, monospace; margin: 0;
+  }
+  pre b.ph, code b.ph { color: var(--ph); font-weight: 700; font-style: normal; }
+  code {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 0.88em; font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  .copybtn {
+    position: absolute; top: 8px; right: 8px; border: 1px solid #47505c;
+    background: #2d333c; color: #c7cfda; border-radius: 6px; padding: 3px 10px;
+    font-size: 12px; cursor: pointer;
+  }
+  .copybtn:hover { background: #3a414c; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel); }
+  .console { color: var(--accent); font-weight: 600; }
+  .kbd { border: 1px solid #b8c0cc; border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; font-size: 0.85em; background: #f2f4f8; }
+  .arch { background: var(--panel); border: 1px solid var(--line); color: var(--ink); }
+  .muted { color: var(--sub); font-size: 14px; }
+  @media print { .copybtn { display: none; } body { font-size: 13px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🏫 교무업무 지원 도구 — AWS EC2 배포 가이드</h1>
+<p class="subtitle">
+  AWS를 처음 사용하는 분 기준으로, 계정 만들기부터 동료가 접속하는 순간까지 전 과정을 다룹니다.<br>
+  2026년 7월 22일 기준으로 확인한 내용이며, AWS 콘솔의 화면 문구는 이후 조금씩 바뀔 수 있습니다.
+</p>
+
+<div class="toc">
+  <b>목차</b>
+  <ol>
+    <li><a href="#overview">시작 전에 — 무엇을 만들게 되나</a></li>
+    <li><a href="#signup">1단계. AWS 계정 만들기</a></li>
+    <li><a href="#region">2단계. 서울 리전 선택</a></li>
+    <li><a href="#ec2">3단계. EC2 인스턴스(가상 서버) 만들기</a></li>
+    <li><a href="#eip">4단계. 탄력적 IP — 고정 주소 붙이기</a></li>
+    <li><a href="#ssh">5단계. 맥에서 서버 접속(SSH)</a></li>
+    <li><a href="#setup">6단계. 서버 기본 준비</a></li>
+    <li><a href="#upload">7단계. 프로젝트 파일 올리기 + 접속 암호 정하기</a></li>
+    <li><a href="#python">8단계. 파이썬 환경 만들기</a></li>
+    <li><a href="#systemd">9단계. 서버 상시 구동 등록(systemd)</a></li>
+    <li><a href="#check">10단계. 접속 확인, 동료에게 안내</a></li>
+    <li><a href="#ops">운영 — 업데이트·요금·6개월 뒤 할 일</a></li>
+    <li><a href="#trouble">문제 해결</a></li>
+    <li><a href="#https">부록 A. HTTPS 적용 — 무료 주소로 암호화 (강력 권장)</a></li>
+    <li><a href="#cleanup">부록 B. 전부 지우는 방법</a></li>
+    <li><a href="#sources">참고 자료</a></li>
+  </ol>
+</div>
+
+<!-- ================================================================ -->
+<h2 id="overview">시작 전에 — 무엇을 만들게 되나</h2>
+
+<p>완성되면 아래 구조가 됩니다. AWS의 작은 가상 서버 한 대가 화면(index.html)과 API를 함께 제공하고, 동료들은 브라우저로 주소 하나만 열면 됩니다.</p>
+
+<div class="codeblock"><pre class="arch">
+[동료의 브라우저]
+      │  ① http://탄력적IP 접속 → 화면이 뜸
+      │  ② 기능 실행 시 접속 암호 1회 입력(브라우저에 저장됨)
+      ▼
+┌────────────────────────────────┐
+│  EC2 가상 서버 (서울 리전)         │
+│  · Ubuntu 24.04 / t3.micro     │
+│  · FastAPI(server.py)가 항상 실행 │
+│  · index.html도 이 서버가 제공    │
+└────────────────────────────────┘
+      │
+      ▼  Gemini API (소진 시 DeepSeek 자동 전환)
+</pre></div>
+
+<h3>준비물</h3>
+<ul>
+  <li>이메일 주소 1개 (AWS 계정용)</li>
+  <li>해외 결제 가능한 신용카드 또는 체크카드 — <b>무료 플랜이어도 본인 확인용으로 등록이 필수</b>입니다. 유료 전환 전까지는 청구되지 않고, 등록 시 확인용 가승인(1달러 수준)이 잠깐 잡혔다 풀릴 수 있습니다.</li>
+  <li>휴대폰 (SMS 인증)</li>
+  <li>맥 터미널 (파일 업로드와 서버 접속에 사용)</li>
+</ul>
+
+<h3>비용 요약</h3>
+<ul>
+  <li>신규 가입 시 크레딧 <b>$100</b>을 받고, EC2 실행·예산 생성 같은 활동을 하면 <b>최대 $100</b>을 더 받습니다. 크레딧은 가입 후 12개월간 유효합니다.</li>
+  <li>이 구성의 사용량은 <b>월 약 $12~14</b>(서버 약 $9~10 + 공인 IPv4 약 $3.7 + 디스크 약 $1) 수준이고, 전부 크레딧에서 차감됩니다. 요금은 시점에 따라 조금 다르니 정확한 값은 콘솔의 요금 페이지에서 확인하세요.</li>
+  <li>무료 플랜(Free plan)으로 가입하면 크레딧 범위를 넘는 <b>카드 청구가 원천적으로 불가능</b>합니다. 대신 <b>가입 6개월 후(또는 크레딧 소진 시) 플랜이 만료</b>됩니다 — 이때 할 일은 <a href="#ops">운영 섹션</a>에 정리했습니다.</li>
+</ul>
+
+<div class="box warn"><b>⚠️ 소요 시간</b>
+  가입부터 접속 확인까지 여유 있게 약 1시간을 잡으세요. 부록 A(HTTPS)까지 하면 30분쯤 더 걸립니다. 중간에 끊어도 이어서 진행할 수 있습니다.</div>
+
+<div class="box tip"><b>💡 표기 규칙</b>
+  명령이나 설정에서 <b style="color:#c94f44">이런 색으로 표시된 부분</b>은 본인의 값으로 바꿔 넣은 뒤 실행해야 합니다. 나머지는 그대로 복사해 붙여넣으면 됩니다(각 명령 상자의 <b>복사</b> 버튼 사용).</div>
+
+<!-- ================================================================ -->
+<h2 id="signup"><span class="stepnum">1단계</span>AWS 계정 만들기</h2>
+
+<ol>
+  <li><a href="https://aws.amazon.com/ko/" target="_blank">aws.amazon.com/ko</a>에 접속해 <span class="console">계정 생성</span>(또는 AWS 계정 생성)을 누릅니다.</li>
+  <li>루트 사용자 이메일 주소와 계정 이름을 입력합니다. 이메일로 온 인증 코드를 입력하고, 루트 비밀번호를 만듭니다.</li>
+  <li><b>플랜 선택 화면</b>이 나오면 <span class="console">무료(Free)</span> 플랜을 선택합니다. 무료 플랜은 카드 청구가 아예 발생하지 않는 대신 최대 6개월까지 사용할 수 있습니다.</li>
+  <li>연락처 정보를 입력합니다. 계정 유형은 <span class="console">개인</span>을 선택하고, 주소는 영문으로 입력하는 편이 무난합니다.</li>
+  <li>결제 정보(카드)를 등록합니다. 본인 확인 목적이며 무료 플랜에서는 청구되지 않습니다.</li>
+  <li>휴대폰 SMS 인증을 마치면 가입이 완료됩니다. 몇 분 뒤 계정이 활성화됩니다.</li>
+  <li><a href="https://console.aws.amazon.com/" target="_blank">console.aws.amazon.com</a>에서 <span class="console">루트 사용자</span>로 로그인합니다.</li>
+</ol>
+
+<div class="box tip"><b>💡 한국어 콘솔</b>
+  콘솔 화면 왼쪽 아래(또는 우상단 계정 메뉴)의 언어 설정에서 한국어를 선택할 수 있습니다. 이 가이드는 한국어 콘솔 기준으로 씁니다.</div>
+
+<div class="box tip"><b>💡 여유가 될 때 한 가지 더</b>
+  우상단 계정 메뉴 → <span class="console">보안 자격 증명</span>에서 루트 계정에 MFA(휴대폰 인증 앱)를 걸어두면 계정 탈취를 막을 수 있습니다. 지금 당장 필수는 아니니 배포를 마친 뒤에 해도 됩니다.</div>
+
+<!-- ================================================================ -->
+<h2 id="region"><span class="stepnum">2단계</span>서울 리전 선택</h2>
+
+<p>콘솔 <b>우상단</b>에 현재 리전(지역) 이름이 표시됩니다. 이를 눌러 <span class="console">아시아 태평양(서울) ap-northeast-2</span>를 선택하세요.</p>
+
+<div class="box warn"><b>⚠️ 중요</b>
+  이후 모든 작업은 서울 리전에서 합니다. 나중에 "분명히 만들었는데 인스턴스가 안 보인다"면 십중팔구 다른 리전을 보고 있는 것입니다. 우상단 리전 표시부터 확인하세요.</div>
+
+<!-- ================================================================ -->
+<h2 id="ec2"><span class="stepnum">3단계</span>EC2 인스턴스(가상 서버) 만들기</h2>
+
+<ol>
+  <li>콘솔 상단 검색창에 <code>EC2</code>를 입력해 EC2 서비스로 이동합니다.</li>
+  <li>주황색 <span class="console">인스턴스 시작</span> 버튼을 누릅니다.</li>
+  <li><b>이름 및 태그</b> — 이름에 <code>help-v2</code>를 입력합니다.</li>
+  <li><b>애플리케이션 및 OS 이미지</b> — 빠른 시작에서 <span class="console">Ubuntu</span>를 선택하고, 이미지가 <b>Ubuntu Server 24.04 LTS</b>, 아키텍처가 <b>64비트(x86)</b>인지 확인합니다.</li>
+  <li><b>인스턴스 유형</b> — <code>t3.micro</code>를 선택합니다(vCPU 2, 메모리 1GB — 이 도구에는 충분합니다).</li>
+  <li><b>키 페어(로그인)</b> — <span class="console">새 키 페어 생성</span>을 누르고 다음처럼 만듭니다.
+    <ul>
+      <li>이름 <code>help-v2-key</code>, 유형 <b>RSA</b>, 형식 <b>.pem</b></li>
+      <li>생성을 누르면 <code>help-v2-key.pem</code> 파일이 다운로드됩니다. 이 파일이 서버의 열쇠입니다. <b>다시 내려받을 수 없으니</b> 지우지 말고 보관하세요(기본 위치는 <code>~/Downloads</code>).</li>
+    </ul>
+  </li>
+  <li><b>네트워크 설정</b> — 다음 두 개를 체크합니다.
+    <ul>
+      <li>✅ <span class="console">SSH 트래픽 허용</span> — 위치는 <b>위치 무관(0.0.0.0/0)</b>을 선택합니다. 키 파일(.pem)이 있어야만 접속되므로 실질적 위험은 낮고, 집·학교 어디서든 관리할 수 있습니다.</li>
+      <li>✅ <span class="console">인터넷에서 HTTP 트래픽 허용</span> — 동료들이 접속하는 통로(포트 80)입니다.</li>
+    </ul>
+  </li>
+  <li><b>스토리지 구성</b> — 기본값 8GiB(gp3) 그대로 둡니다.</li>
+  <li>오른쪽 요약에서 <span class="console">인스턴스 시작</span>을 누릅니다. 1~2분 뒤 인스턴스 목록에서 상태가 <b>실행 중</b>이 되면 성공입니다.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="eip"><span class="stepnum">4단계</span>탄력적 IP — 고정 주소 붙이기</h2>
+
+<p>기본 공인 IP는 서버를 껐다 켜면 바뀝니다. 동료에게 알려줄 주소가 바뀌면 곤란하니 고정 IP(탄력적 IP)를 붙입니다.</p>
+
+<ol>
+  <li>EC2 왼쪽 메뉴에서 <span class="console">네트워크 및 보안 → 탄력적 IP</span>로 이동합니다.</li>
+  <li><span class="console">탄력적 IP 주소 할당</span> → 기본값 그대로 <span class="console">할당</span>.</li>
+  <li>방금 생긴 IP를 선택하고 <span class="console">작업 → 탄력적 IP 주소 연결</span> → 인스턴스에서 <code>help-v2</code>를 골라 <span class="console">연결</span>합니다.</li>
+</ol>
+
+<p>이제 이 IP가 서비스 주소입니다. 아래에서 계속 쓰니 적어두세요. 이 가이드에서는 <b style="color:#c94f44">탄력적IP</b>라고 표시합니다(예: 3.35.123.45).</p>
+
+<div class="box warn"><b>⚠️ 탄력적 IP 요금의 함정</b>
+  인스턴스에 <b>연결되어 있는 동안</b>은 일반 공인 IPv4 요금(월 약 $3.7, 크레딧 차감)만 듭니다. 그런데 인스턴스를 지우고 IP만 남겨두면 미사용 IP 요금이 계속 나갑니다. 나중에 정리할 때는 <a href="#cleanup">부록 B</a> 순서대로 IP까지 릴리스하세요.</div>
+
+<!-- ================================================================ -->
+<h2 id="ssh"><span class="stepnum">5단계</span>맥에서 서버 접속(SSH)</h2>
+
+<p>맥에서 <b>터미널</b>을 열고, 먼저 키 파일 권한을 조입니다(최초 1회만).</p>
+
+<div class="codeblock"><pre>chmod 400 ~/Downloads/help-v2-key.pem</pre></div>
+
+<p>서버에 접속합니다.</p>
+
+<div class="codeblock"><pre>ssh -i ~/Downloads/help-v2-key.pem ubuntu@<b class="ph">탄력적IP</b></pre></div>
+
+<ul>
+  <li>처음 접속하면 <code>Are you sure you want to continue connecting?</code>이라고 묻습니다. <code>yes</code>를 입력하세요.</li>
+  <li>프롬프트가 <code>ubuntu@ip-…:~$</code>로 바뀌면 서버 안에 들어온 것입니다.</li>
+</ul>
+
+<div class="box tip"><b>💡 터미널 없이 접속하는 방법도 있습니다</b>
+  EC2 콘솔에서 인스턴스를 선택하고 <span class="console">연결 → EC2 Instance Connect</span>를 누르면 브라우저 안에서 서버 셸이 열립니다. 다만 파일 업로드(scp)는 맥 터미널이 필요하므로, 이 가이드는 터미널 기준으로 진행합니다.</div>
+
+<!-- ================================================================ -->
+<h2 id="setup"><span class="stepnum">6단계</span>서버 기본 준비</h2>
+
+<p><b>서버 셸</b>(방금 SSH로 들어간 화면)에서 실행합니다. 시스템을 최신화하고, 파이썬 가상환경 도구를 설치하고, 프로젝트 폴더를 만듭니다. 몇 분 걸릴 수 있습니다.</p>
+
+<div class="codeblock"><pre>sudo apt update &amp;&amp; sudo apt -y upgrade
+sudo apt -y install python3-venv
+mkdir -p ~/help_v2</pre></div>
+
+<p class="muted">중간에 보라색 재시작 안내 화면(<i>Pending kernel upgrade</i> 등)이 나오면 <span class="kbd">Enter</span>로 넘어가면 됩니다.</p>
+
+<!-- ================================================================ -->
+<h2 id="upload"><span class="stepnum">7단계</span>프로젝트 파일 올리기 + 접속 암호 정하기</h2>
+
+<h3>7-1. 파일 업로드 (맥의 새 터미널 탭에서)</h3>
+
+<p>서버 셸은 그대로 두고, 맥에서 <b>새 터미널 탭</b>(<span class="kbd">⌘T</span>)을 열어 실행합니다.</p>
+
+<div class="codeblock"><pre>cd /Users/munhokang/82107/help_v2
+scp -i ~/Downloads/help-v2-key.pem server.py index.html requirements.txt .env ubuntu@<b class="ph">탄력적IP</b>:~/help_v2/</pre></div>
+
+<p>4개 파일이 100%로 전송되면 성공입니다.</p>
+
+<div class="box danger"><b>🚨 .env 파일 주의</b>
+  <code>.env</code>에는 Gemini·NVIDIA 실제 API 키가 들어 있습니다. 이 파일은 지금처럼 scp로만 옮기고, 절대 카톡·메일·GitHub 등에 올리지 마세요.</div>
+
+<h3>7-2. 접속 암호(ACCESS_CODE) 정하기</h3>
+
+<p>동료에게 알려줄 접속 암호를 하나 정합니다(예: 학교 이름+숫자 조합). <b>서버 셸</b>에서 실행하세요.</p>
+
+<div class="codeblock"><pre>echo 'ACCESS_CODE=<b class="ph">원하는암호</b>' &gt;&gt; ~/help_v2/.env</pre></div>
+
+<p>확인은 이렇게 합니다. 마지막 줄에 방금 넣은 암호가 보이면 됩니다.</p>
+
+<div class="codeblock"><pre>cat ~/help_v2/.env</pre></div>
+
+<p class="muted">이 암호가 설정되면 화면은 누구나 열 수 있지만, 생성 기능(API)은 암호를 입력한 사람만 쓸 수 있습니다. 선생님 컴퓨터의 로컬 개발 환경에는 ACCESS_CODE를 넣지 않았으므로 로컬에서는 암호 없이 그대로 동작합니다.</p>
+
+<!-- ================================================================ -->
+<h2 id="python"><span class="stepnum">8단계</span>파이썬 환경 만들기</h2>
+
+<p><b>서버 셸</b>에서 가상환경을 만들고 의존성을 설치합니다.</p>
+
+<div class="codeblock"><pre>cd ~/help_v2
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt</pre></div>
+
+<p>설치가 끝나면 서버 코드가 정상적으로 읽히는지 확인합니다.</p>
+
+<div class="codeblock"><pre>.venv/bin/python -c "import server" &amp;&amp; echo OK</pre></div>
+
+<p><code>OK</code>가 출력되면 다음 단계로 넘어갑니다.</p>
+
+<!-- ================================================================ -->
+<h2 id="systemd"><span class="stepnum">9단계</span>서버 상시 구동 등록(systemd)</h2>
+
+<p>SSH 창을 닫아도, 서버가 재부팅되어도 자동으로 실행되도록 시스템 서비스로 등록합니다. <b>서버 셸</b>에서 아래 블록을 통째로 붙여넣으세요.</p>
+
+<div class="codeblock"><pre>sudo tee /etc/systemd/system/help-v2.service &gt; /dev/null &lt;&lt;'EOF'
+[Unit]
+Description=help_v2 (FastAPI - Gemini/DeepSeek proxy)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/help_v2
+ExecStart=/home/ubuntu/help_v2/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 80
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF</pre></div>
+
+<p class="muted">포트 80은 원래 관리자 전용이라, <code>AmbientCapabilities</code> 줄이 이 서비스에만 80 포트 사용 권한을 줍니다.</p>
+
+<p>서비스를 등록하고 시작합니다.</p>
+
+<div class="codeblock"><pre>sudo systemctl daemon-reload
+sudo systemctl enable --now help-v2
+systemctl status help-v2 --no-pager</pre></div>
+
+<p>상태에 <b style="color:#2e7d32">active (running)</b>이 보이면 성공입니다. 실시간 로그는 다음 명령으로 볼 수 있고, <span class="kbd">Ctrl+C</span>로 빠져나옵니다.</p>
+
+<div class="codeblock"><pre>sudo journalctl -u help-v2 -f</pre></div>
+
+<!-- ================================================================ -->
+<h2 id="check"><span class="stepnum">10단계</span>접속 확인, 동료에게 안내</h2>
+
+<ol>
+  <li>브라우저 주소창에 <code>http://<b class="ph">탄력적IP</b></code>를 입력합니다. 교무업무 지원 도구 화면이 뜨면 성공입니다.</li>
+  <li>아무 기능이나 실행해 봅니다. 처음 한 번 <b>접속 암호</b>를 물어보면 7-2에서 정한 암호를 입력하세요. 브라우저에 저장되어 다음부터는 묻지 않습니다.</li>
+  <li>생기부 작성 기능까지 실제로 한 번 돌려보고 결과가 나오는지 확인하세요.</li>
+</ol>
+
+<div class="box warn"><b>⚠️ 반드시 http:// 로 접속</b>
+  일부 브라우저는 주소를 자동으로 <code>https://</code>로 바꾸는데, 지금 구성은 HTTP 전용이라 https로는 열리지 않습니다. 안 열리면 주소창에 <code>http://</code>를 직접 붙여 다시 시도하세요. (https 적용 방법은 <a href="#https">부록 A</a>에 있습니다.)</div>
+
+<h3>동료에게 알려줄 것</h3>
+<ul>
+  <li>주소 <code>http://<b class="ph">탄력적IP</b></code> — 즐겨찾기 등록을 권하세요.</li>
+  <li>접속 암호 — 주소와 <b>다른 채널</b>(예: 직접 말로)로 전달하면 더 안전합니다.</li>
+  <li>입력한 학생 관련 내용은 서버에 저장되지 않고 AI 호출에만 사용된다는 점.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="ops">운영 — 업데이트·요금·6개월 뒤 할 일</h2>
+
+<h3>코드를 수정했을 때 반영하는 방법</h3>
+
+<p>맥에서 수정 → 파일 업로드 → 서비스 재시작, 세 단계입니다.</p>
+
+<div class="codeblock"><pre>cd /Users/munhokang/82107/help_v2
+scp -i ~/Downloads/help-v2-key.pem server.py index.html ubuntu@<b class="ph">탄력적IP</b>:~/help_v2/
+ssh -i ~/Downloads/help-v2-key.pem ubuntu@<b class="ph">탄력적IP</b> "sudo systemctl restart help-v2"</pre></div>
+
+<p class="muted">참고로 이번 배포 준비 작업 이후, 로컬에서 쓸 때도 index.html 파일을 직접 열지 않고 <code>.venv/bin/uvicorn server:app --port 8000</code>으로 서버를 띄운 뒤 <code>http://localhost:8000</code>으로 접속하는 방식으로 바뀌었습니다.</p>
+
+<h3>요금·크레딧 확인</h3>
+<ul>
+  <li>콘솔 검색창에 <code>Billing</code>을 입력해 <span class="console">결제 및 비용 관리</span>로 들어가면 이번 달 사용액과 <span class="console">크레딧</span> 잔액·만료일을 볼 수 있습니다. 첫 달에 한 번 들어가서 크레딧이 잘 차감되는지 확인해 보세요.</li>
+  <li>같은 곳의 <span class="console">예산(Budgets) → 예산 생성 → 제로 지출 예산 템플릿</span>으로 알림을 만들어 두면, 크레딧 밖 실제 청구가 1원이라도 생길 때 이메일을 받습니다. 몇 번의 클릭이면 되고, 이런 활동이 추가 크레딧 적립 대상이 되기도 합니다.</li>
+</ul>
+
+<h3 id="expiry">6개월 뒤(또는 크레딧 소진 시) — 중요</h3>
+
+<div class="box danger"><b>🚨 무료 플랜 만료를 그냥 두면 서버가 사라집니다</b>
+  무료 플랜은 <b>가입 6개월 후 또는 크레딧 소진 시</b> 만료됩니다. 만료되면 계정이 닫히고 서버가 중지되며, <b>90일 안에</b> 유료 플랜으로 전환하지 않으면 데이터까지 영구 삭제됩니다. AWS가 만료 전에 이메일로 안내하니 가입 이메일을 꼭 챙겨 보시고, 달력에 <b>가입 5개월째 알림</b>을 하나 걸어두세요.</div>
+
+<p>계속 운영하려면 만료 전에 콘솔 안내에 따라 유료 플랜으로 전환하면 됩니다(남은 크레딧은 유지, 소진 후부터 카드 청구 시작 — 이 구성 기준 월 약 $12~14, 약 2만 원). 그 시점에 비용을 줄이고 싶다면 월 $5 고정의 Lightsail로 옮기는 방법도 있습니다 — 그때 다시 도움을 요청하세요.</p>
+
+<h3>서버 중지·재시작</h3>
+<ul>
+  <li>인스턴스를 <b>중지</b>하면 동료들이 접속할 수 없습니다. 상시 서비스라면 계속 켜두는 것이 전제입니다.</li>
+  <li>재부팅(콘솔 → 인스턴스 → 재부팅)해도 systemd 등록 덕분에 서비스가 자동으로 다시 뜨고, 탄력적 IP라 주소도 그대로입니다.</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 id="trouble">문제 해결</h2>
+
+<table>
+  <tr><th style="width:34%">증상</th><th>확인 순서</th></tr>
+  <tr>
+    <td>브라우저에서 페이지가 안 열림</td>
+    <td>① 주소가 <code>http://</code>인지(https 아님) ② EC2 콘솔에서 인스턴스가 <b>실행 중</b>인지 ③ 보안 그룹 인바운드에 HTTP(80)가 있는지 ④ 서버 셸에서 <code>systemctl status help-v2</code>가 active인지 ⑤ <code>sudo journalctl -u help-v2 -n 50</code>으로 오류 로그 확인</td>
+  </tr>
+  <tr>
+    <td>암호를 넣어도 계속 "올바르지 않습니다"</td>
+    <td>서버 셸에서 <code>cat ~/help_v2/.env</code>로 ACCESS_CODE 값 확인(앞뒤 공백·오타 주의). 값을 고쳤다면 <code>sudo systemctl restart help-v2</code> 후 다시 시도 — 화면에서 틀린 암호는 다시 물어보므로 새로고침 없이 재입력하면 됩니다.</td>
+  </tr>
+  <tr>
+    <td>SSH/scp가 안 됨</td>
+    <td>① 키 경로가 맞는지(<code>~/Downloads/help-v2-key.pem</code>) ② <code>chmod 400</code>을 했는지 ③ 사용자명이 <code>ubuntu</code>인지 ④ IP가 탄력적 IP가 맞는지</td>
+  </tr>
+  <tr>
+    <td>생성 기능에서 "사용량이 소진되었습니다(429)" 오류</td>
+    <td>Gemini 무료 사용량이 그날 한도까지 쓰인 것입니다. 시간이 지나면 회복되고, DeepSeek 예비 모델이 있는 기능은 자동 전환됩니다. 키를 늘리려면 로컬 <code>.env</code>의 <code>GEMINI_API_KEYS</code>에 키를 추가하고 위의 "코드 반영 방법"대로 .env를 다시 올린 뒤 재시작하세요.</td>
+  </tr>
+  <tr>
+    <td>코드를 올렸는데 반영이 안 됨</td>
+    <td>scp 후 <code>sudo systemctl restart help-v2</code>를 했는지 확인하세요. 브라우저 새로고침(<span class="kbd">⌘⇧R</span> 강력 새로고침)도 필요할 수 있습니다.</td>
+  </tr>
+  <tr>
+    <td>인스턴스 목록이 비어 있음</td>
+    <td>우상단 리전이 <b>서울</b>인지 확인하세요.</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 id="https">부록 A. HTTPS 적용 — 무료 주소로 암호화 (강력 권장)</h2>
+
+<p>지금 구성(HTTP)은 통신이 암호화되지 않습니다. 이 도구에는 <b>학생 관련 내용(생기부 초안 등)</b>이 오가므로, 여유가 되는 대로 HTTPS를 적용하시길 강하게 권합니다. 도메인을 구매하지 않아도 무료 서브도메인(DuckDNS)과 무료 인증서(Caddy가 자동 발급)로 가능합니다. 약 20~30분 걸립니다.</p>
+
+<h3>A-1. DuckDNS 무료 주소 만들기</h3>
+<ol>
+  <li><a href="https://www.duckdns.org" target="_blank">duckdns.org</a>에 접속해 구글 계정 등으로 로그인합니다.</li>
+  <li>domains 칸에 원하는 이름(예: <code>help82107</code>)을 입력하고 <span class="console">add domain</span>을 누릅니다.</li>
+  <li>생긴 도메인의 <b>current ip</b> 칸에 <b style="color:#c94f44">탄력적IP</b>를 입력하고 <span class="console">update ip</span>를 누릅니다.</li>
+</ol>
+<p>이제 <code><b class="ph">내이름</b>.duckdns.org</code>가 서버를 가리킵니다. IP가 고정이므로 갱신 프로그램은 필요 없습니다.</p>
+
+<h3>A-2. 보안 그룹에 HTTPS(443) 열기</h3>
+<ol>
+  <li>EC2 콘솔 → 인스턴스 선택 → <span class="console">보안</span> 탭 → 보안 그룹 클릭 → <span class="console">인바운드 규칙 편집</span>.</li>
+  <li><span class="console">규칙 추가</span> — 유형 <b>HTTPS</b>, 소스 <b>위치 무관(0.0.0.0/0)</b> → 저장.</li>
+</ol>
+
+<h3>A-3. Caddy 설치 (서버 셸)</h3>
+<p>Caddy는 인증서 발급·갱신을 전부 자동으로 해주는 웹서버입니다. 아래는 우분투 공식 설치 절차입니다(최신 명령은 <a href="https://caddyserver.com/docs/install" target="_blank">공식 문서</a> 참고).</p>
+
+<div class="codeblock"><pre>sudo apt -y install debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update &amp;&amp; sudo apt -y install caddy</pre></div>
+
+<h3>A-4. 우리 서버를 내부 포트로 옮기기</h3>
+<p>80 포트를 Caddy에게 넘겨야 하므로, FastAPI는 내부 전용(127.0.0.1:8000)으로 바꿉니다. 서비스 파일을 아래 내용으로 통째로 덮어씁니다.</p>
+
+<div class="codeblock"><pre>sudo tee /etc/systemd/system/help-v2.service &gt; /dev/null &lt;&lt;'EOF'
+[Unit]
+Description=help_v2 (FastAPI - Gemini/DeepSeek proxy)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/help_v2
+ExecStart=/home/ubuntu/help_v2/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart help-v2</pre></div>
+
+<h3>A-5. Caddy 설정</h3>
+
+<div class="box warn"><b>⚠️ 붙여넣기 전에 바꾸세요</b>
+  아래 블록은 붙여넣는 즉시 실행됩니다. 복사한 뒤 메모장 등에서 색으로 표시된 세 곳(<b style="color:#c94f44">내이름</b> 두 곳, <b style="color:#c94f44">탄력적IP</b> 한 곳)을 먼저 본인 값으로 바꾸고 나서 터미널에 붙여넣으세요.</div>
+
+<div class="codeblock"><pre>sudo tee /etc/caddy/Caddyfile &gt; /dev/null &lt;&lt;'EOF'
+<b class="ph">내이름</b>.duckdns.org {
+    reverse_proxy 127.0.0.1:8000
+}
+
+http://<b class="ph">탄력적IP</b> {
+    redir https://<b class="ph">내이름</b>.duckdns.org{uri}
+}
+EOF
+sudo systemctl restart caddy</pre></div>
+
+<p class="muted">두 번째 블록은 기존 IP 주소로 들어온 동료를 새 주소로 자동 안내하는 역할입니다.</p>
+
+<h3>A-6. 확인</h3>
+<ol>
+  <li>브라우저에서 <code>https://<b class="ph">내이름</b>.duckdns.org</code> 접속. 첫 접속은 인증서 발급 때문에 몇십 초 걸릴 수 있습니다.</li>
+  <li>주소창에 자물쇠가 보이고 화면이 뜨면 완료입니다. 동료들에게 새 주소를 안내하세요.</li>
+  <li>안 되면 <code>sudo journalctl -u caddy -n 50</code>으로 로그를 확인하세요. 대부분 DuckDNS의 IP 오타이거나 443 포트 미개방입니다.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="cleanup">부록 B. 전부 지우는 방법</h2>
+
+<p>더 이상 운영하지 않기로 했다면 요금이 나올 수 있는 것부터 순서대로 지웁니다.</p>
+
+<ol>
+  <li>EC2 → 인스턴스 선택 → <span class="console">인스턴스 상태 → 인스턴스 종료(삭제)</span>. 디스크(EBS)는 기본 설정상 함께 삭제됩니다.</li>
+  <li><span class="console">네트워크 및 보안 → 탄력적 IP</span> → 해당 IP 선택 → <span class="console">작업 → 연결 해제</span>(이미 해제됐다면 생략) → <span class="console">작업 → 탄력적 IP 주소 릴리스</span>. <b>이걸 빼먹으면 미사용 IP 요금이 계속 나갑니다.</b></li>
+  <li>키 페어·보안 그룹은 요금이 없지만, 정리하려면 각 메뉴에서 삭제하면 됩니다.</li>
+  <li>마지막으로 <span class="console">결제 및 비용 관리</span>에서 다음 달 청구 예정액이 0인지 확인하세요.</li>
+</ol>
+
+<!-- ================================================================ -->
+<h2 id="sources">참고 자료</h2>
+
+<ul>
+  <li><a href="https://aws.amazon.com/about-aws/whats-new/2025/07/aws-free-tier-credits-month-free-plan/" target="_blank">AWS 공지 — 새 프리 티어($200 크레딧, 6개월 무료 플랜)</a></li>
+  <li><a href="https://aws.amazon.com/free/free-tier-faqs/" target="_blank">AWS Free Tier FAQ — 카드 등록 필수, 만료 후 90일 유예 등</a></li>
+  <li><a href="https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier.html" target="_blank">AWS 문서 — 프리 티어 안내</a></li>
+  <li><a href="https://caddyserver.com/docs/install" target="_blank">Caddy 공식 설치 문서</a></li>
+  <li><a href="https://www.duckdns.org" target="_blank">DuckDNS — 무료 서브도메인</a></li>
+</ul>
+
+<p class="muted">이 문서는 2026-07-22에 작성되었습니다. 요금·화면 구성은 이후 달라질 수 있으며, 막히는 부분은 Claude에게 이 문서와 함께 다시 물어보면 이어서 도와줄 수 있습니다.</p>
+
+</div>
+
+<script>
+// 각 명령 상자에 "복사" 버튼을 붙인다(자바스크립트 몇 줄, 외부 의존성 없음).
+document.querySelectorAll('.codeblock').forEach((box) => {
+  const pre = box.querySelector('pre');
+  if (!pre || pre.classList.contains('arch')) return;
+  const btn = document.createElement('button');
+  btn.className = 'copybtn';
+  btn.textContent = '복사';
+  btn.addEventListener('click', async () => {
+    const text = pre.textContent;
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+    btn.textContent = '✅ 복사됨';
+    setTimeout(() => { btn.textContent = '복사'; }, 1500);
+  });
+  box.appendChild(btn);
+});
+</script>
+</body>
+</html>
