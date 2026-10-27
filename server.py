@@ -64,10 +64,10 @@ _gemini_cursor = {"write": [0, 0], "extract": [0, 0]}
 # DeepSeek(NVIDIA NIM, OpenAI 호환) — 모든 Gemini 키·모델이 소진되면 생기부 작성을 이어받는
 # 예비 모델. aider에서 쓰는 것과 같은 NVIDIA_NIM_API_KEY(nvapi-...)를 사용한다.
 #   .env 예) NVIDIA_NIM_API_KEY="nvapi-..."
-#           DEEPSEEK_MODEL="deepseek-ai/deepseek-v4-pro"   (기본값)
+#           DEEPSEEK_MODEL="deepseek-ai/deepseek-v4.1-flash"   (기본값)
 DEEPSEEK_BASE_URL = (os.environ.get("DEEPSEEK_BASE_URL") or "https://integrate.api.nvidia.com/v1").strip()
 DEEPSEEK_API_KEY = (os.environ.get("NVIDIA_NIM_API_KEY") or "").strip()
-DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-ai/deepseek-v4-pro").strip()
+DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-ai/deepseek-v4.1-flash").strip()
 SYSTEM_PROMPT = "당신은 명확하고 통찰력 있는 답변을 제공하는 전문적인 AI 어시스턴트입니다."
 TEMPERATURE = 0.7
 
@@ -235,7 +235,9 @@ def _deepseek_generate(prompt, system, temperature, json_mode=False):
         response = deepseek_client.chat.completions.create(**kwargs)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"DeepSeek 호출 실패: {e}")
-    content = response.choices[0].message.content
+    msg = response.choices[0].message
+    # NIM의 deepseek-v4.1-flash는 json_object 모드에서 답을 reasoning_content에 넣는다.
+    content = msg.content or (json_mode and getattr(msg, "reasoning_content", None))
     if not content:
         raise HTTPException(status_code=502, detail="DeepSeek 응답이 비어 있습니다.")
     return content

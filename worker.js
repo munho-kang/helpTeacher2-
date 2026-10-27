@@ -26,7 +26,7 @@ function config(env) {
     accessCode: (env.ACCESS_CODE || "").trim(),
     dsKey: (env.NVIDIA_NIM_API_KEY || "").trim(),
     dsBase: (env.DEEPSEEK_BASE_URL || "https://integrate.api.nvidia.com/v1").trim(),
-    dsModel: (env.DEEPSEEK_MODEL || "deepseek-ai/deepseek-v4-pro").trim(),
+    dsModel: (env.DEEPSEEK_MODEL || "deepseek-ai/deepseek-v4.1-flash").trim(),
   };
 }
 
@@ -172,7 +172,9 @@ async function deepseekGenerate(c, prompt, system, temperature, jsonMode) {
   try {
     const r = await deepseekFetch(c, payload);
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    content = (await r.json()).choices?.[0]?.message?.content;
+    const msg = (await r.json()).choices?.[0]?.message;
+    // NIM의 deepseek-v4.1-flash는 json_object 모드에서 답을 reasoning_content에 넣는다.
+    content = msg?.content || (jsonMode && msg?.reasoning_content);
   } catch (e) {
     throw new HttpError(502, `DeepSeek 호출 실패: ${e.message}`);
   }
