@@ -1,0 +1,12 @@
+# Cloudflare Workers 배포 설정 — `npx wrangler@4 deploy`
+# 키(GEMINI_API_KEYS, NVIDIA_NIM_API_KEY, ACCESS_CODE)는 여기 말고 `wrangler secret put`으로 넣는다.
+name = "help-v2"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# index.html을 텍스트로 묶어서 워커가 직접 돌려준다.
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true

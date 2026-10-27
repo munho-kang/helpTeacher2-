@@ -48,3 +48,6 @@ desktop.ini
 .env
 .flaskenv
 .aider*
+
+# Cloudflare wrangler 로컬 캐시
+.wrangler/
